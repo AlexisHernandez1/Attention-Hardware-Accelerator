@@ -1,0 +1,22 @@
+make: Entering directory '/home/users/ah072084/chipyard/sims/verilator'
+if [ "/home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/binaries/transformer_block_test-L256_D16_F64-baremetal" != "none" ] && [ ! -f "/home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/binaries/transformer_block_test-L256_D16_F64-baremetal" ]; then printf "\n\nBinary /home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/binaries/transformer_block_test-L256_D16_F64-baremetal not found\n\n"; exit 1; fi
+(set -o pipefail &&  /home/users/ah072084/chipyard/sims/verilator/simulator-chipyard.harness-GemminiRocketConfig \
+	+permissive \
+	+dramsim +dramsim_ini_dir=/home/users/ah072084/chipyard/generators/testchipip/src/main/resources/dramsim2_ini +max-cycles=10000000     \
+	+permissive-off \
+	/home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/binaries/transformer_block_test-L256_D16_F64-baremetal \
+	 \
+	</dev/null | tee /home/users/ah072084/chipyard/sims/verilator/output/chipyard.harness.TestHarness.GemminiRocketConfig/transformer_block_test-L256_D16_F64-baremetal.log)
+== Loading device model file '/home/users/ah072084/chipyard/generators/testchipip/src/main/resources/dramsim2_ini/DDR3_micron_64M_8B_x4_sg15.ini' == 
+%Warning: System has stack size 8192 kb which may be too small; suggest 'ulimit -c 15363' or larger
+[UART] UART0 is here (stdin/stdout).
+== Loading system model file '/home/users/ah072084/chipyard/generators/testchipip/src/main/resources/dramsim2_ini/system.ini' == 
+===== MemorySystem 0 =====
+CH. 0 TOTAL_STORAGE : 4096MB | 1 Ranks | 16 Devices per rank
+DRAMSim2 Clock Frequency =666666666Hz, CPU Clock Frequency=500000000Hz
+*** FAILED ***                       (timeout) after             10000001 simulation cycles
+[10000001000] %Fatal: TestDriver.v:147: Assertion failed in TOP.TestDriver
+%Error: /home/users/ah072084/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TestDriver.v:147: Verilog $stop
+Aborting...
+make: *** [/home/users/ah072084/chipyard/common.mk:393: /home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/binaries/transformer_block_test-L256_D16_F64-baremetal.run.fast] Error 255
+make: Leaving directory '/home/users/ah072084/chipyard/sims/verilator'

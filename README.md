@@ -30,3 +30,11 @@ reproducible:
 ## Background
 
 This project explores RISC-V hardware acceleration for attention, a key computational bottleneck in transformer inference. Built on the open-source Gemmini/Chipyard framework and advised by Professor Tony Wu from the Zhejiang University SPAIL Lab. 
+
+## Baseline Tests
+
+The single-head transformer decoder-block benchmark is recorded separately for
+each simulator:
+
+- [Spike functional baseline](baseline-tests/spike/README.md)
+- [Verilator cycle-accurate baseline](baseline-tests/verilator/README.md)

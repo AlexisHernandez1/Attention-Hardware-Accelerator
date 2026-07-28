@@ -1,0 +1,6 @@
+[2026-07-22T00:03:38-07:00] Build started: -DSEQ_LEN=64 -DD_MODEL=16 -DD_FF=64
+[2026-07-22T00:03:38-07:00] Build passed
+[2026-07-22T00:03:38-07:00] Spike pre-flight started
+[2026-07-22T00:03:38-07:00] Spike pre-flight passed
+[2026-07-22T00:03:39-07:00] Verilator started (wall-time ceiling: 42560s)
+[2026-07-22T00:38:02-07:00] Verilator FAIL or wall-time ceiling reached (2063s)

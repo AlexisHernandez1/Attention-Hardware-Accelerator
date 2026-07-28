@@ -1,0 +1,51 @@
+Transformer decoder baseline: L=16 D=16 D_FF=64 DIM=16
+QUANT_SCALE=0.008, final tolerance=0.039 (5x scale)
+Gold softmax float range: [0.049, 0.078], raw levels at QUANT_SCALE: [6.252, 9.964]
+Q raw int8 range: [-114, 122]
+K raw int8 range: [-97, 107]
+V raw int8 range: [-15, 15]
+Attention scores raw int8 range: [-28, 33]
+Softmax weights raw int8 range: [6, 10]
+Attention output raw int8 range: [-3, 3]
+Output projection raw int8 range: [-1, 1]
+Residual 1 raw int8 range: [-64, 64]
+RMSNorm 1 raw int8 range: [-110, 97]
+FFN up raw int8 range: [0, 23]
+FFN down raw int8 range: [-5, 4]
+Residual 2 raw int8 range: [-111, 99]
+Final RMSNorm raw int8 range: [-112, 97]
+
+Transformer decoder-block timing
+QKV projections cycles: 952 (1%)
+  Total MACs: 12288, Ideal cycles: 48, Utilization: 5%
+Attention scores cycles: 323 (0%)
+  Total MACs: 4096, Ideal cycles: 16, Utilization: 4%
+Softmax cycles: 49088 (64%)
+Attention output cycles: 320 (0%)
+  Total MACs: 4096, Ideal cycles: 16, Utilization: 5%
+Output projection cycles: 319 (0%)
+  Total MACs: 4096, Ideal cycles: 16, Utilization: 5%
+Residual add 1 cycles: 5793 (7%)
+RMSNorm 1 cycles: 6489 (8%)
+Feed-forward network cycles: 637 (0%)
+  Total MACs: 32768, Ideal cycles: 128, Utilization: 20%
+Residual add 2 cycles: 5795 (7%)
+RMSNorm 2 cycles: 6490 (8%)
+Total cycles: 76206 (100%)
+
+Logical scratchpad/main-memory traffic estimate
+X: elements=256, bytes/access=256, accesses=4, estimated bytes=1024
+W_q: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_k: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_v: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_o: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_up: elements=1024, bytes/access=1024, accesses=1, estimated bytes=1024
+W_down: elements=1024, bytes/access=1024, accesses=1, estimated bytes=1024
+scores: elements=256, bytes/access=256, accesses=2, estimated bytes=512
+attention weights: elements=256, bytes/access=256, accesses=2, estimated bytes=512
+attention output: elements=256, bytes/access=256, accesses=2, estimated bytes=512
+FFN intermediate: elements=1024, bytes/access=1024, accesses=2, estimated bytes=2048
+final output: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+PASS
+Gemmini extension configured with:
+    dim = 16

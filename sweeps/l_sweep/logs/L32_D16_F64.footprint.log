@@ -1,0 +1,9 @@
+Configuration: L=32 D_MODEL=16 D_FF=64
+Quantized int8 tensors: 12800 bytes
+Float32 gold-reference tensors: 51200 bytes
+int32 zero-bias accumulator tensors: 14336 bytes
+Total declared benchmark buffers: 78336 bytes
+Verilator GemminiRocketConfig DRAM: 268435456 bytes (256 MiB)
+Linker script: /home/users/ah072084/chipyard/generators/gemmini/software/gemmini-rocc-tests/riscv-tests/benchmarks/common/test.ld
+Linker placement: starts at 0x80000000; it declares no stack or DRAM upper bound.
+20% free-space warning threshold: 214748364 bytes

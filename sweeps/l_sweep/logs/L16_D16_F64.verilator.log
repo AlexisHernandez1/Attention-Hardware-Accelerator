@@ -1,0 +1,67 @@
+make: Entering directory '/home/users/ah072084/chipyard/sims/verilator'
+if [ "/home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/binaries/transformer_block_test-L16_D16_F64-baremetal" != "none" ] && [ ! -f "/home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/binaries/transformer_block_test-L16_D16_F64-baremetal" ]; then printf "\n\nBinary /home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/binaries/transformer_block_test-L16_D16_F64-baremetal not found\n\n"; exit 1; fi
+(set -o pipefail &&  /home/users/ah072084/chipyard/sims/verilator/simulator-chipyard.harness-GemminiRocketConfig \
+	+permissive \
+	+dramsim +dramsim_ini_dir=/home/users/ah072084/chipyard/generators/testchipip/src/main/resources/dramsim2_ini +max-cycles=10000000     \
+	+permissive-off \
+	/home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/binaries/transformer_block_test-L16_D16_F64-baremetal \
+	 \
+	</dev/null | tee /home/users/ah072084/chipyard/sims/verilator/output/chipyard.harness.TestHarness.GemminiRocketConfig/transformer_block_test-L16_D16_F64-baremetal.log)
+== Loading device model file '/home/users/ah072084/chipyard/generators/testchipip/src/main/resources/dramsim2_ini/DDR3_micron_64M_8B_x4_sg15.ini' == 
+%Warning: System has stack size 8192 kb which may be too small; suggest 'ulimit -c 15363' or larger
+[UART] UART0 is here (stdin/stdout).
+== Loading system model file '/home/users/ah072084/chipyard/generators/testchipip/src/main/resources/dramsim2_ini/system.ini' == 
+===== MemorySystem 0 =====
+CH. 0 TOTAL_STORAGE : 4096MB | 1 Ranks | 16 Devices per rank
+DRAMSim2 Clock Frequency =666666666Hz, CPU Clock Frequency=500000000Hz
+Transformer decoder baseline: L=16 D=16 D_FF=64 DIM=16
+QUANT_SCALE=0.008, final tolerance=0.039 (5x scale)
+Gold softmax float range: [0.049, 0.078], raw levels at QUANT_SCALE: [6.252, 9.964]
+Q raw int8 range: [-114, 122]
+K raw int8 range: [-97, 107]
+V raw int8 range: [-15, 15]
+Attention scores raw int8 range: [-28, 33]
+Softmax weights raw int8 range: [6, 10]
+Attention output raw int8 range: [-3, 3]
+Output projection raw int8 range: [-1, 1]
+Residual 1 raw int8 range: [-64, 64]
+RMSNorm 1 raw int8 range: [-110, 97]
+FFN up raw int8 range: [0, 23]
+FFN down raw int8 range: [-5, 4]
+Residual 2 raw int8 range: [-111, 99]
+Final RMSNorm raw int8 range: [-112, 97]
+
+Transformer decoder-block timing
+QKV projections cycles: 2283 (1%)
+  Total MACs: 12288, Ideal cycles: 48, Utilization: 2%
+Attention scores cycles: 679 (0%)
+  Total MACs: 4096, Ideal cycles: 16, Utilization: 2%
+Softmax cycles: 97526 (66%)
+Attention output cycles: 663 (0%)
+  Total MACs: 4096, Ideal cycles: 16, Utilization: 2%
+Output projection cycles: 603 (0%)
+  Total MACs: 4096, Ideal cycles: 16, Utilization: 2%
+Residual add 1 cycles: 8764 (6%)
+RMSNorm 1 cycles: 12474 (8%)
+Feed-forward network cycles: 1780 (1%)
+  Total MACs: 32768, Ideal cycles: 128, Utilization: 7%
+Residual add 2 cycles: 8589 (5%)
+RMSNorm 2 cycles: 12383 (8%)
+Total cycles: 145744 (100%)
+
+Logical scratchpad/main-memory traffic estimate
+X: elements=256, bytes/access=256, accesses=4, estimated bytes=1024
+W_q: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_k: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_v: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_o: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_up: elements=1024, bytes/access=1024, accesses=1, estimated bytes=1024
+W_down: elements=1024, bytes/access=1024, accesses=1, estimated bytes=1024
+scores: elements=256, bytes/access=256, accesses=2, estimated bytes=512
+attention weights: elements=256, bytes/access=256, accesses=2, estimated bytes=512
+attention output: elements=256, bytes/access=256, accesses=2, estimated bytes=512
+FFN intermediate: elements=1024, bytes/access=1024, accesses=2, estimated bytes=2048
+final output: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+PASS
+- /home/users/ah072084/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish
+make: Leaving directory '/home/users/ah072084/chipyard/sims/verilator'
