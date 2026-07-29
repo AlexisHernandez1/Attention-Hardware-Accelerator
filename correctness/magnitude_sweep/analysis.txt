@@ -1,0 +1,7 @@
+D_MODEL=16
+INPUT_RAW_MAGNITUDE=64
+ACC_SCALE=0.0078125
+HEADROOM=100.0
+current_QK=56 1sigma=64.663 3sigma=193.990 exceeds127=yes
+recommended_QK=28 1sigma=32.332 3sigma=96.995 exceeds127=no
+28

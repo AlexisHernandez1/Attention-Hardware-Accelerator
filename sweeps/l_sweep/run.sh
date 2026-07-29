@@ -1,31 +1,22 @@
 #!/usr/bin/env bash
-# L sweep: hold model width constant while increasing sequence length.
+# Official L sweep baseline: PRNG_SEED=1, independent tensor seeding.
+# Spike+gold → export expected → Verilator SKIP_GOLD for L in {16,32,64,128,256}.
 set -u -o pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 RUNNER="$ROOT/sweeps/run_transformer_sweep.sh"
 RESULT_DIR="$ROOT/sweeps/l_sweep"
+SEED=1
 failed=0
 
-if ! "$RUNNER" "$RESULT_DIR" "L16_D16_F64" 16 16 64; then
-  echo "Configuration L=16 failed; later L points will not run." >&2
-  exit 1
-fi
-
-baseline_seconds=$(<"$RESULT_DIR/logs/L16_D16_F64.verilator_seconds")
-echo "L=16 Verilator wall time: ${baseline_seconds}s"
-
-for L in 32 64 128 256; do
-  # Scalar softmax and attention-score storage grow with L^2. Scale the
-  # generous 2x-L=16 ceiling by that work factor so healthy larger points are
-  # not falsely classified as hung.
-  scale=$(( (L / 16) * (L / 16) ))
-  timeout_seconds=$(( 2 * baseline_seconds * scale ))
-  if ! VERILATOR_TIMEOUT_SECONDS="$timeout_seconds" \
-      "$RUNNER" "$RESULT_DIR" "L${L}_D16_F64" "$L" 16 64; then
-    echo "Configuration L=$L did not finish with Verilator PASS." >&2
+for L in 16 32 64 128 256; do
+  tag="L${L}_D16_F64_seed${SEED}"
+  echo "========== Official L sweep: $tag =========="
+  if ! "$RUNNER" "$RESULT_DIR" "$tag" "$L" 16 64 "$SEED"; then
+    echo "Configuration L=$L (seed=$SEED) did not finish with Verilator PASS." >&2
     failed=1
   fi
 done
 
+python3 "$RESULT_DIR/generate_readme.py" || true
 exit "$failed"

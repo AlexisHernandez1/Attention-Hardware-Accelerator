@@ -1,0 +1,6 @@
+L	saturation	result	Q_max_abs	K_max_abs	max_abs_QK
+16	no	PASS	68	60	68
+32	no	PASS	68	60	68
+64	no	PASS	68	62	68
+128	no	PASS	68	62	68
+256	no	PASS	68	63	68

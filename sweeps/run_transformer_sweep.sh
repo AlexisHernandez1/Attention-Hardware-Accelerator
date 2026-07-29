@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
-# Rebuild and run one immutable transformer_block_test configuration.
+# Official L-sweep point: PRNG_SEED=1, independent tensor seeding.
+#
+# Flow per config:
+#   1) Spike + float gold (+ dump expected) — correctness
+#   2) Export expected_final snapshot
+#   3) Rebuild with SKIP_GOLD + USE_EXPECTED
+#   4) Verilator cycle-accurate run (no on-device gold)
 #
 # Usage:
-#   sweeps/run_transformer_sweep.sh <result-dir> <tag> <seq-len> <d-model> <d-ff>
-#
-# This script deliberately does not edit Chipyard source or Makefiles. It forces
-# the existing bareMetalC target to rebuild because Make does not track changes
-# to TRANSFORMER_CFLAGS as file dependencies.
-
+#   sweeps/run_transformer_sweep.sh <result-dir> <tag> <seq-len> <d-model> <d-ff> [seed]
 set -euo pipefail
 
-if [[ $# -ne 5 ]]; then
-  echo "Usage: $0 <result-dir> <tag> <seq-len> <d-model> <d-ff>" >&2
+if [[ $# -lt 5 || $# -gt 6 ]]; then
+  echo "Usage: $0 <result-dir> <tag> <seq-len> <d-model> <d-ff> [seed]" >&2
   exit 2
 fi
 
@@ -20,16 +21,21 @@ TAG=$2
 SEQ_LEN=$3
 D_MODEL=$4
 D_FF=$5
+PRNG_SEED=${6:-1}
 
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 CHIPYARD=${CHIPYARD:-/home/users/ah072084/chipyard}
 ROCC_TESTS="$CHIPYARD/generators/gemmini/software/gemmini-rocc-tests"
 BINARY="$ROCC_TESTS/build/bareMetalC/transformer_block_test-baremetal"
 LOG_DIR="$RESULT_DIR/logs"
 BIN_DIR="$RESULT_DIR/binaries"
-DRAM_BYTES=$((0x10000000)) # 256 MiB: Rocket Chip WithDefaultMemPort.
+EXPECT_DIR="$ROOT/correctness/expected"
+INC_DIR="$EXPECT_DIR/include_${TAG}"
+SNAP="$EXPECT_DIR/${TAG}.h"
+DRAM_BYTES=$((0x10000000))
 WARNING_BYTES=$((DRAM_BYTES * 80 / 100))
 
-mkdir -p "$LOG_DIR" "$BIN_DIR"
+mkdir -p "$LOG_DIR" "$BIN_DIR" "$EXPECT_DIR" "$INC_DIR"
 STATUS_LOG="$LOG_DIR/${TAG}.status.log"
 : > "$STATUS_LOG"
 
@@ -42,8 +48,7 @@ if (( SEQ_LEN % 16 != 0 || D_MODEL % 16 != 0 || D_FF % 16 != 0 )); then
   exit 2
 fi
 
-# Tensor element count shared by the quantized and float-reference pipelines:
-# X, 6 weights, 13 quantized/intermediate tensors, and their float equivalents.
+# Declared tensors only (gold still allocated in BSS even if SKIP_GOLD skips compute).
 TENSOR_ELEMENTS=$((11 * SEQ_LEN * D_MODEL + 4 * D_MODEL * D_MODEL + \
   2 * D_MODEL * D_FF + 2 * SEQ_LEN * SEQ_LEN + SEQ_LEN * D_FF))
 INT8_BYTES=$TENSOR_ELEMENTS
@@ -52,14 +57,14 @@ ACC_ZERO_BYTES=$((4 * (SEQ_LEN * D_MODEL + SEQ_LEN * SEQ_LEN + SEQ_LEN * D_FF)))
 STATIC_BUFFER_BYTES=$((INT8_BYTES + FLOAT_BYTES + ACC_ZERO_BYTES))
 
 {
+  echo "Official baseline: independent PRNG, PRNG_SEED=$PRNG_SEED"
   echo "Configuration: L=$SEQ_LEN D_MODEL=$D_MODEL D_FF=$D_FF"
   echo "Quantized int8 tensors: $INT8_BYTES bytes"
-  echo "Float32 gold-reference tensors: $FLOAT_BYTES bytes"
+  echo "Float32 gold-reference tensors: $FLOAT_BYTES bytes (allocated; compute skipped on Verilator)"
   echo "int32 zero-bias accumulator tensors: $ACC_ZERO_BYTES bytes"
   echo "Total declared benchmark buffers: $STATIC_BUFFER_BYTES bytes"
   echo "Verilator GemminiRocketConfig DRAM: $DRAM_BYTES bytes (256 MiB)"
   echo "Linker script: $ROCC_TESTS/riscv-tests/benchmarks/common/test.ld"
-  echo "Linker placement: starts at 0x80000000; it declares no stack or DRAM upper bound."
   echo "20% free-space warning threshold: $WARNING_BYTES bytes"
 } | tee "$LOG_DIR/${TAG}.footprint.log"
 
@@ -71,74 +76,94 @@ if (( STATIC_BUFFER_BYTES >= WARNING_BYTES )); then
   echo "WARNING: benchmark buffers use at least 80% of configured DRAM." >&2
 fi
 
-# Chipyard's activation hook probes an initially unset RISCV variable, which
-# conflicts with this script's nounset mode. Restore nounset immediately after
-# sourcing the environment.
 set +u
 source "$CHIPYARD/env.sh"
 set -u
 
-# build.sh performs the one-time configure step when build/ does not exist.
 if [[ ! -d "$ROCC_TESTS/build" ]]; then
   (cd "$ROCC_TESTS" && ./build.sh bareMetalC)
 fi
 
-TRANSFORMER_CFLAGS="-DSEQ_LEN=$SEQ_LEN -DD_MODEL=$D_MODEL -DD_FF=$D_FF"
-status "Build started: $TRANSFORMER_CFLAGS"
-if make -C "$ROCC_TESTS/build/bareMetalC" -B \
+build_one() {
+  local cflags=$1
+  local log=$2
+  make -C "$ROCC_TESTS/build/bareMetalC" -B \
     -f "$ROCC_TESTS/bareMetalC/Makefile" \
     abs_top_srcdir="$ROCC_TESTS" \
     src_dir="$ROCC_TESTS/bareMetalC" \
     XLEN=64 PREFIX=examples-bareMetalC \
-    TRANSFORMER_CFLAGS="$TRANSFORMER_CFLAGS" \
-    transformer_block_test-baremetal |& tee "$LOG_DIR/${TAG}.build.log"; then
-  status "Build passed"
-else
-  status "Build failed"
-  exit 1
-fi
+    TRANSFORMER_CFLAGS="$cflags" \
+    transformer_block_test-baremetal |& tee "$log"
+}
 
-status "Spike pre-flight started"
-if spike --extension=gemmini "$BINARY" |& tee "$LOG_DIR/${TAG}.spike.log" &&
-    rg -qx 'PASS' "$LOG_DIR/${TAG}.spike.log"; then
-  status "Spike pre-flight passed"
-else
-  status "Spike pre-flight failed; Verilator will not run"
-  exit 1
-fi
+# --- 1) Spike + float gold + dump expected ---
+GOLD_CFLAGS="-DSEQ_LEN=$SEQ_LEN -DD_MODEL=$D_MODEL -DD_FF=$D_FF -DPRNG_SEED=$PRNG_SEED -DDUMP_EXPECTED=1"
+status "Spike gold build started: $GOLD_CFLAGS"
+build_one "$GOLD_CFLAGS" "$LOG_DIR/${TAG}.gold_build.log"
+status "Spike gold pre-flight started"
+spike --extension=gemmini "$BINARY" |& tee "$LOG_DIR/${TAG}.spike.log"
+rg -qx PASS "$LOG_DIR/${TAG}.spike.log"
+status "Spike gold pre-flight passed"
 
+python3 - "$LOG_DIR/${TAG}.spike.log" "$SNAP" "$SEQ_LEN" "$D_MODEL" "$D_FF" "$PRNG_SEED" <<'PY'
+import sys
+from pathlib import Path
+log_path, out_path, L, D, F, seed = sys.argv[1:7]
+L, D, F, seed = map(int, (L, D, F, seed))
+text = Path(log_path).read_text().splitlines()
+begin = next(i for i, line in enumerate(text) if line.startswith("BEGIN_EXPECTED"))
+end = next(i for i, line in enumerate(text) if line.startswith("END_EXPECTED"))
+rows = [[int(x) for x in line.split()] for line in text[begin+1:end] if line.strip()]
+if len(rows) != L or any(len(r) != D for r in rows):
+    raise SystemExit(f"bad expected shape: {len(rows)} rows")
+lines = [
+    "/* Auto-generated by run_transformer_sweep.sh — do not hand-edit. */",
+    f"/* SEQ_LEN={L} D_MODEL={D} D_FF={F} PRNG_SEED={seed} independent tensor streams */",
+    "#ifndef TRANSFORMER_EXPECTED_H",
+    "#define TRANSFORMER_EXPECTED_H",
+    "#include <stdint.h>",
+    f"static const int8_t expected_final[{L}][{D}] = {{",
+]
+for row in rows:
+    lines.append("  {" + ", ".join(str(v) for v in row) + "},")
+lines += ["};", "#endif", ""]
+Path(out_path).write_text("\n".join(lines))
+print(f"Wrote {out_path}")
+PY
+cp "$SNAP" "$INC_DIR/transformer_expected.h"
+status "Exported expected snapshot $SNAP"
+
+# --- 2) Rebuild without on-device gold for Verilator timing ---
+RTL_CFLAGS="-DSEQ_LEN=$SEQ_LEN -DD_MODEL=$D_MODEL -DD_FF=$D_FF -DPRNG_SEED=$PRNG_SEED -DSKIP_GOLD=1 -DUSE_EXPECTED -I$INC_DIR"
+status "Verilator binary build started: $RTL_CFLAGS"
+build_one "$RTL_CFLAGS" "$LOG_DIR/${TAG}.rtl_build.log"
 cp "$BINARY" "$BIN_DIR/transformer_block_test-${TAG}-baremetal"
 
-# run-binary-fast executes the same cycle-accurate RTL but omits the enormous
-# instruction-disassembly trace produced by run-binary. Test UART output, the
-# stage counters, and PASS/FAIL are still captured below.
+# Softmax dominates and scales ~L^2; no gold on this binary.
+scale=$(( SEQ_LEN / 16 ))
+TIMEOUT_CYCLES=${TIMEOUT_CYCLES:-$(( 20000000 * scale * scale ))}
+VERILATOR_TIMEOUT_SECONDS=${VERILATOR_TIMEOUT_SECONDS:-$(( 2 * 900 * scale * scale ))}
+
 verilator_start_seconds=$(date +%s)
-if [[ ${VERILATOR_TIMEOUT_SECONDS:-0} -gt 0 ]]; then
-  status "Verilator started (wall-time ceiling: ${VERILATOR_TIMEOUT_SECONDS}s)"
-  if timeout --foreground "$VERILATOR_TIMEOUT_SECONDS" \
-      make -C "$CHIPYARD/sims/verilator" CONFIG=GemminiRocketConfig run-binary-fast \
-      "BINARY=$BIN_DIR/transformer_block_test-${TAG}-baremetal" |& \
-      tee "$LOG_DIR/${TAG}.verilator.log"; then
-    verilator_command_passed=1
-  else
-    verilator_command_passed=0
-  fi
+status "Verilator started (TIMEOUT_CYCLES=$TIMEOUT_CYCLES, wall ${VERILATOR_TIMEOUT_SECONDS}s, SKIP_GOLD=1)"
+if timeout --foreground "$VERILATOR_TIMEOUT_SECONDS" \
+    make -C "$CHIPYARD/sims/verilator" CONFIG=GemminiRocketConfig run-binary-fast \
+    TIMEOUT_CYCLES="$TIMEOUT_CYCLES" \
+    "BINARY=$BIN_DIR/transformer_block_test-${TAG}-baremetal" |& \
+    tee "$LOG_DIR/${TAG}.verilator.log"; then
+  verilator_command_passed=1
 else
-  status "Verilator started (no wall-time ceiling)"
-  if make -C "$CHIPYARD/sims/verilator" CONFIG=GemminiRocketConfig run-binary-fast \
-      "BINARY=$BIN_DIR/transformer_block_test-${TAG}-baremetal" |& \
-      tee "$LOG_DIR/${TAG}.verilator.log"; then
-    verilator_command_passed=1
-  else
-    verilator_command_passed=0
-  fi
+  verilator_command_passed=0
 fi
 verilator_elapsed_seconds=$(( $(date +%s) - verilator_start_seconds ))
 printf '%s\n' "$verilator_elapsed_seconds" > "$LOG_DIR/${TAG}.verilator_seconds"
 
-if (( verilator_command_passed )) && rg -qx 'PASS' "$LOG_DIR/${TAG}.verilator.log"; then
+if (( verilator_command_passed )) && rg -qx PASS "$LOG_DIR/${TAG}.verilator.log"; then
   status "Verilator PASS (${verilator_elapsed_seconds}s)"
+elif rg -q '\(timeout\)' "$LOG_DIR/${TAG}.verilator.log"; then
+  status "Verilator hit +max-cycles=$TIMEOUT_CYCLES (${verilator_elapsed_seconds}s)"
+  exit 1
 else
-  status "Verilator FAIL or wall-time ceiling reached (${verilator_elapsed_seconds}s)"
+  status "Verilator FAIL or wall-time ceiling (${verilator_elapsed_seconds}s)"
   exit 1
 fi

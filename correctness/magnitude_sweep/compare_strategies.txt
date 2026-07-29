@@ -1,0 +1,21 @@
+Comparison at seed=1 L=32 D=16
+
+A: QK=56 + ACC=QUANT (old default)
+  Q max_abs=102 sat=False | K max_abs=128 sat=True
+  scores raw=(-45, 41) sat=False | std=0.0833 range=0.6719
+  softmax H=3.4626 (ln L=3.4657, dH=0.0032) | mean maxp=0.0365 vs 1/L=0.0312
+
+B: QK=28 + ACC=QUANT (anti-sat shrink)
+  Q max_abs=68 sat=False | K max_abs=60 sat=False
+  scores raw=(-8, 9) sat=False | std=0.0193 range=0.1328
+  softmax H=3.4656 (ln L=3.4657, dH=0.0002) | mean maxp=0.0324 vs 1/L=0.0312
+
+C: QK=56 + ACC_Q/K calibrated (3σ→105), SCORE=QUANT/√D
+  Q max_abs=110 sat=False | K max_abs=118 sat=False
+  scores raw=(-41, 37) sat=False | std=0.0751 range=0.6094
+  softmax H=3.4631 (ln L=3.4657, dH=0.0026) | mean maxp=0.0359 vs 1/L=0.0312
+
+Calibrated scales (frozen from seed=1 L=32 empirical raw std):
+  raw std Q=4183.503 K=5333.242
+  ACC_SCALE_Q=0.00836620 ACC_SCALE_K=0.00656261
+  QUANT_SCALE=0.00781250

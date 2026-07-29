@@ -1,0 +1,49 @@
+Diversity check: seed=1 L=32 D=16 D_FF=64 QK_W=28
+mix_seed W_k identical L=16 vs L=32: True
+shared-PRNG W_k identical L=16 vs L=32: False
+
+=== mix_seed (current): weight pairwise similarity ===
+pair                 cosine    max|diff|
+W_q vs W_k          -0.1532         55.0
+W_q vs W_v           0.0007         36.0
+W_q vs W_o          -0.0647         44.0
+W_k vs W_v          -0.0549         36.0
+W_k vs W_o           0.0520         42.0
+W_v vs W_o           0.0370         24.0
+W_up vs W_down (trunc)     0.0238         16.0
+W_q vs W_up (trunc)    -0.0784         36.0
+W_k vs W_up (trunc)    -0.0498         36.0
+
+=== mix_seed (current): QK scores (post int8, dequantized with QUANT_SCALE) ===
+Q max_abs=68  K max_abs=60  sat_Q=False  sat_K=False
+scores raw range=[-8, 9]  std=0.019298  range(max-min)=0.132812
+
+=== mix_seed (current): softmax rows ===
+uniform entropy ln(L)=3.4657  mean row entropy=3.4656  min=3.4653  max=3.4657
+mean row max_prob=0.032434  (uniform 1/L=0.031250)
+  row 0: max=0.032238  entropy=3.4656  top5=[0.03223793 0.03223793 0.03198705 0.03173812 0.03173812]
+  row 16: max=0.032703  entropy=3.4655  top5=[0.03270326 0.03219624 0.03219624 0.03219624 0.03194569]
+  row 31: max=0.032322  entropy=3.4655  top5=[0.03232248 0.03232248 0.03232248 0.03232248 0.03182137]
+
+=== shared-PRNG (legacy reconstruction): weight pairwise similarity ===
+pair                 cosine    max|diff|
+W_q vs W_k          -0.0568         52.0
+W_q vs W_v          -0.0447         36.0
+W_q vs W_o          -0.0166         42.0
+W_k vs W_v           0.0350         35.0
+W_k vs W_o           0.0738         43.0
+W_v vs W_o          -0.0320         22.0
+W_up vs W_down (trunc)    -0.0126         16.0
+W_q vs W_up (trunc)    -0.0121         35.0
+W_k vs W_up (trunc)     0.1925         34.0
+
+=== shared-PRNG (legacy reconstruction): QK scores (post int8, dequantized with QUANT_SCALE) ===
+Q max_abs=68  K max_abs=72  sat_Q=False  sat_K=False
+scores raw range=[-10, 9]  std=0.020921  range(max-min)=0.148438
+
+=== shared-PRNG (legacy reconstruction): softmax rows ===
+uniform entropy ln(L)=3.4657  mean row entropy=3.4655  min=3.4651  max=3.4657
+mean row max_prob=0.032579  (uniform 1/L=0.031250)
+  row 0: max=0.032712  entropy=3.4656  top5=[0.03271238 0.03245781 0.03220522 0.0319546  0.0319546 ]
+  row 16: max=0.032587  entropy=3.4656  top5=[0.03258654 0.03183167 0.03183167 0.03183167 0.03158396]
+  row 31: max=0.033384  entropy=3.4651  top5=[0.03338365 0.03312386 0.03312386 0.03261032 0.03261032]

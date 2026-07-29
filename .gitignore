@@ -1,0 +1,6 @@
+sweeps/l_sweep/binaries/
+sweeps/l_sweep/logs/
+baseline-tests/verilator-L32/
+correctness/logs/
+correctness/scripts/__pycache__/
+correctness/magnitude_sweep/logs/

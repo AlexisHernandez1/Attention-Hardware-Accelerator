@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Generate the L-sweep README from immutable per-configuration run logs."""
+"""Generate the official seed-1 L-sweep README from per-configuration run logs."""
 
 from pathlib import Path
 import re
 
 root = Path(__file__).resolve().parent
 logs = root / "logs"
+seed = 1
 stages = [
     "QKV projections",
     "Attention scores",
@@ -28,9 +29,8 @@ def match(pattern: str, text: str, default: str = "—") -> str:
 rows = []
 footprints = []
 for length in (16, 32, 64, 128, 256):
-    tag = f"L{length}_D16_F64"
-    verilator_log = (logs / f"{tag}.verilator.log")
-    text = verilator_log.read_text() if verilator_log.exists() else ""
+    tag = f"L{length}_D16_F64_seed{seed}"
+    text = (logs / f"{tag}.verilator.log").read_text() if (logs / f"{tag}.verilator.log").exists() else ""
     values = []
     for stage in stages:
         item = re.search(
@@ -48,8 +48,7 @@ for length in (16, 32, 64, 128, 256):
         result = "FAIL / incomplete"
     rows.append([str(length), total, *values, result])
 
-    footprint_log = logs / f"{tag}.footprint.log"
-    footprint = footprint_log.read_text() if footprint_log.exists() else ""
+    footprint = (logs / f"{tag}.footprint.log").read_text() if (logs / f"{tag}.footprint.log").exists() else ""
     footprints.append(
         [
             str(length),
@@ -62,15 +61,16 @@ for length in (16, 32, 64, 128, 256):
 
 headers = ["L", "Total cycles", *stages, "Result"]
 lines = [
-    "# Sequence-Length Sweep Baseline",
+    "# Official Sequence-Length Sweep Baseline (seed=1)",
     "",
     "## Setup",
     "",
-    "- Fixed dimensions: `D_MODEL=16`, `D_FF=64`; varied `SEQ_LEN`: 16, 32, 64, 128, 256.",
-    "- Every point is force-rebuilt with `TRANSFORMER_CFLAGS`; each first passes Spike before RTL simulation.",
-    "- Timing numbers come only from cycle-accurate Verilator using `GemminiRocketConfig`.",
-    "- Spike is a functional pre-flight check; its reported cycles are not hardware-performance data.",
-    "- Each Verilator log contains timestamped build, Spike, and Verilator status lines.",
+    "- **Official generator:** independent per-tensor PRNG streams from `PRNG_SEED=1`.",
+    "- Fixed: `D_MODEL=16`, `D_FF=64`; varied `SEQ_LEN`: 16, 32, 64, 128, 256.",
+    "- Spike: float gold + export `expected_final` snapshot.",
+    "- Verilator: `SKIP_GOLD=1` + `USE_EXPECTED` (exact int8 match to Spike snapshot).",
+    "- Timing from cycle-accurate `GemminiRocketConfig` only; Spike cycles are not RTL performance.",
+    "- Legacy shared-PRNG baselines under `baseline-tests/` are historical only — do not mix into before/after tables.",
     "",
     "## Verilator Results",
     "",
@@ -93,18 +93,13 @@ lines.extend("| " + " | ".join(row) + " |" for row in footprints)
 lines.extend(
     [
         "",
-        "The bare-metal linker script places the image at `0x80000000` but does not declare a stack or DRAM upper bound. "
-        "`GemminiRocketConfig` uses Rocket Chip's default 256 MiB external-memory window; the table reports the benchmark's declared tensors only.",
+        "Expected snapshots live in `correctness/expected/L*_D16_F64_seed1.h`.",
         "",
-        "## Sanity Check",
+        "## Notes",
         "",
-        "The `L=16` result is expected to match the previously validated manual baseline: `145744` total cycles and `PASS`. "
-        "A mismatch indicates that the sweep pipeline or simulator configuration needs investigation before comparing larger points.",
-        "",
-        "## Incomplete Points",
-        "",
-        "A `Verilator +max-cycles timeout` result means the simulator's fixed `+max-cycles=10000000` limit expired before the benchmark printed `PASS` or `FAIL`. "
-        "It is distinct from the script's wall-time ceiling and does not establish numerical correctness or timing for that point.",
+        "- Softmax share of runtime should grow with L (host scalar `expf` over L×L).",
+        "- Seed 1 may still show K saturation; that is frozen for this official baseline.",
+        "- A `Verilator +max-cycles timeout` means the sim-cycle budget was too small, not necessarily a functional FAIL.",
     ]
 )
 
