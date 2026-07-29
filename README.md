@@ -55,3 +55,17 @@ Historical (legacy shared-PRNG / pre-calibration) simulator notes:
 - [Verilator L=32 (legacy)](baseline-tests/verilator-L32/README.md)
 - [Baseline-tests index](baseline-tests/README.md)
 - Pre-cal expected headers: [`correctness/expected/legacy_pre_cal/`](correctness/expected/legacy_pre_cal/)
+
+## Hardware/software changes
+
+Actual attention-kernel changes (RMSNorm gain calibration, Q/K quantization
+probes, softmax distribution validation) live in a fork of Chipyard, chained
+through its submodules:
+
+- **Chipyard fork**: https://github.com/AlexisHernandez1/Chipyard — branch `attention-accelerator`
+- **Gemmini fork**: https://github.com/AlexisHernandez1/Gemmini — branch `attention-accelerator`
+- **Gemmini-rocc-tests fork**: https://github.com/AlexisHernandez1/gemmini-rocc-tests — branch `attention-accelerator`
+
+Clone the Chipyard fork (with `--recurse-submodules`) on the `attention-accelerator`
+branch to reproduce the hardware-side results referenced in this repo's writeups
+and probe outputs under `correctness/`.
