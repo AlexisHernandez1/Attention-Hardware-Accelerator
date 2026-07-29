@@ -6,8 +6,12 @@ DNN accelerator generator, within the Chipyard SoC framework.
 
 ## Status
 
-Early stage — building a custom bareMetalC test workload for attention
-(Gemmini has no existing QKV/softmax/attention benchmark upstream). 
+Early stage — single-head transformer decoder-block bareMetalC baseline on
+Gemmini (Spike / Verilator). Calibrated Q/K ACC scales, score dequant, and
+RMSNorm gain are the **official defaults**; residual/RMSNorm and softmax ΔH
+assertions are baked into the test. See
+[`correctness/README.md`](correctness/README.md) and
+[`correctness/WHAT_THIS_PROVES.md`](correctness/WHAT_THIS_PROVES.md).
 
 ## Approach
 
@@ -29,12 +33,25 @@ reproducible:
 
 ## Background
 
-This project explores RISC-V hardware acceleration for attention, a key computational bottleneck in transformer inference. Built on the open-source Gemmini/Chipyard framework and advised by Professor Tony Wu from the Zhejiang University SPAIL Lab. 
+This project explores RISC-V hardware acceleration for attention, a key computational bottleneck in transformer inference. Built on the open-source Gemmini/Chipyard framework and advised by Professor Tony Wu from the Zhejiang University SPAIL Lab.
 
 ## Baseline Tests
 
-The single-head transformer decoder-block benchmark is recorded separately for
-each simulator:
+**Official baseline:** single-head, `D_MODEL=16`, `D_FF=64`, calibrated
+`ACC_SCALE_Q/K`, `SCORE_DEQUANT_SCALE=1/6`, `RMSNORM_GAIN=0.33974210`,
+seeds 1–5 × `L∈{16,32,64,128,256}`.
+
+```bash
+./correctness/scripts/run_attention_baseline_grid.sh
+```
+
+Details: [`correctness/README.md`](correctness/README.md),
+[`sweeps/l_sweep/README.md`](sweeps/l_sweep/README.md).
+
+Historical (legacy shared-PRNG / pre-calibration) simulator notes:
 
 - [Spike functional baseline](baseline-tests/spike/README.md)
-- [Verilator cycle-accurate baseline](baseline-tests/verilator/README.md)
+- [Verilator L=16 (legacy)](baseline-tests/verilator/README.md)
+- [Verilator L=32 (legacy)](baseline-tests/verilator-L32/README.md)
+- [Baseline-tests index](baseline-tests/README.md)
+- Pre-cal expected headers: [`correctness/expected/legacy_pre_cal/`](correctness/expected/legacy_pre_cal/)

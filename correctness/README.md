@@ -1,89 +1,114 @@
-# Correctness workflow: Spike gold + Verilator expected snapshots
+# Correctness suite: single-head attention baseline
 
-This project uses two different checks on purpose.
+Official Spike/Verilator correctness workflow for the Gemmini transformer
+decoder-block bareMetalC test. Calibrated Q/K scales, score dequant, and
+RMSNorm gain are the **source defaults** — no opt-in calibration flag.
 
-## Simple picture
+## What this suite validates
 
-1. **Spike (many seeds)** — generate random-looking inputs from a seed, recompute
-   the block in float (`build_float_gold`), run Gemmini, compare → catch bugs.
-2. **Export** — if Spike `PASS`es, save the final int8 tensor as a header.
-3. **Verilator** — same seed, **skip** float gold, compare Gemmini’s final int8
-   to that saved tensor → fast RTL timing + regression check.
+- Attention-stage numerical correctness: Q/K int8 quantization + score storage +
+  softmax distribution vs an unclipped gold reference
+- Residual / RMSNorm saturation safety (pre-clip |raw| band + no int8 sat)
+- Final float-gold (Spike) or expected-snapshot (Verilator) match
 
-Spike hunts bugs across data. Verilator proves hardware matches a known-good
-answer and reports real cycles.
+**Validated scope:** single-head (`NUM_ATTENTION_HEADS=1`), `D_MODEL=16`,
+`D_FF=64`, seeds `1–5`, `L∈{16,32,64,128,256}`.
 
-## Compile-time knobs (`TRANSFORMER_CFLAGS`)
+## What it does *not* validate
 
-| Flag | Meaning |
-| --- | --- |
-| `-DPRNG_SEED=<n>` | Which reproducible random case (default `1`) |
-| `-DSKIP_GOLD=1` | Do not run `build_float_gold` on the board |
-| `-DUSE_EXPECTED` | Compare to `transformer_expected.h` (exact int8) |
-| `-DDUMP_EXPECTED=1` | After PASS, print a blob the export script parses |
-| `-DDBG_ABS_CYCLES=1` | Absolute cycle markers (optional debug) |
+- Multi-head attention (out of scope by design)
+- Other shapes / widths beyond D16/F64
+- FFN / output-projection stages as a standalone correctness claim
+- RTL / silicon-level correctness beyond matching a Spike-exported snapshot
+- Timing, power, or utilization regressions (see sweeps / baseline-tests)
 
-`SKIP_GOLD=1` **requires** `-DUSE_EXPECTED` (compile error otherwise).
+## Headline results
 
-## Independent tensor seeds (important)
+(a) **RMSNorm gain retune** (`RMSNORM_GAIN=0.33974210`) eliminates pre-clip
+saturation with zero correctness regressions — **25/25** gold PASS across the
+validated grid; residual/RMSNorm peaks stay within the ~105–115 band.
 
-Each of `X`, `W_q`, `W_k`, … is filled from its **own** stream derived from
-`PRNG_SEED`. Changing `SEQ_LEN` no longer reshuffles `W_k`. Same seed ⇒ same
-weights at L=16 and L=32 (X just has more rows). That fixes the old false
-“K only saturates at L≥32” effect from a single shared PRNG.
+(b) **int8 Q/K quantization** does not cause attention entropy collapse relative
+to an unclipped gold reference — **0 rows flagged**, worst ΔH_norm **0.015**
+(threshold 0.03); worst Δmax_w ≈ **−0.022** (threshold −0.03).
 
-## Scripts
+## How to run
 
-All under `correctness/scripts/` (from this repo root):
+One-command Spike gold grid (entry point):
 
 ```bash
-# 1) Multi-seed Spike + float gold (find fragile / saturating cases)
-./correctness/scripts/spike_seed_sweep.sh 16 16 64 1 8
-
-# 2) Freeze one trusted seed as an expected header
-./correctness/scripts/spike_export_expected.sh 16 16 64 1
-./correctness/scripts/spike_export_expected.sh 32 16 64 1
-
-# 3) Verilator with snapshot (no on-device gold)
-./correctness/scripts/verilator_run_expected.sh 16 16 64 1
-./correctness/scripts/verilator_run_expected.sh 32 16 64 1 50000000
+./correctness/scripts/run_attention_baseline_grid.sh
+# optional: ./correctness/scripts/run_attention_baseline_grid.sh 1 2   # seed subset
 ```
 
-Artifacts:
+Export / install expected headers for Verilator (`seed=1`, all L):
 
-- `correctness/expected/L*_D*_F*_seed*.h` — generated snapshots  
-- `correctness/expected/include_*/transformer_expected.h` — include path for builds  
-- `correctness/logs/` — Spike/Verilator logs  
+```bash
+./correctness/scripts/export_baseline_expected.sh
+# or single L: ./correctness/scripts/spike_export_expected.sh 16 16 64 1
+```
 
-## Saturation and varied seeds
+Verilator with a snapshot (no on-device gold):
 
-- Some seeds can still saturate K (wide Q/K init ranges). That is a property of
-  **that seed’s weights**, not of L by itself anymore.
-- Varied Spike seeds help you **discover** saturating vs clean cases.
-- For fair before/after hardware timing, pick one seed (often `1`), note whether
-  it saturates, and keep using it. Do not mix seeds when comparing cycle counts.
+```bash
+./correctness/scripts/verilator_run_expected.sh 16 16 64 1
+```
 
-## Recreating bugs
+## What PASS means
 
-Yes — fully. Record:
+A run prints `PASS` only if **all** of the following hold:
 
-- `SEQ_LEN`, `D_MODEL`, `D_FF`
-- `PRNG_SEED`
-- Whether gold or expected mode
-- Commit hashes of Chipyard/Gemmini/test
+1. Final output matches float gold (Spike) or `expected_final` (USE_EXPECTED)
+2. Residual 1/2 and RMSNorm 1/2: pre-clip max |raw| ≤ 115, and stored int8 does
+   not hit `elem_t` min/max
+3. Softmax fixed-vs-gold: max ΔH_norm ≤ 0.03 and min Δmax_w ≥ −0.03
 
-Same flags ⇒ same inputs ⇒ same failure. Export the expected header only after
-Spike PASS so Verilator regressions replay the trusted case.
+Absolute H_norm rising with L is **length dilution**, not a failure signal
+(printed only under `-DDBG_SOFTMAX_DIST=1` as informational).
 
-## What Verilator does *not* do in expected mode
+## Interpreting failures
 
-It does not re-roll random data or re-run float gold. Diversity stays on Spike
-(`spike_seed_sweep.sh`). Re-export expected headers after intentional numeric
-software changes, or you will get false FAILs.
+| Message | Meaning |
+| --- | --- |
+| `FAIL: N out-of-tolerance elements` | Final gold mismatch (numeric drift) |
+| `FAIL: N elements differ from … expected_final` | Snapshot stale or RTL/software divergence |
+| `FAIL residual/RMSNorm assertion: <stage> preclip…` | Pre-clip |raw| exceeded 115 |
+| `FAIL residual/RMSNorm assertion: <stage> int8 saturation` | Hit ±127 on residual/RMSNorm |
+| `FAIL softmax assertion: max delta_H_norm…` | Fixed softmax too uniform vs gold |
+| `FAIL softmax assertion: min delta_max_w…` | Fixed row peak too diffuse vs gold |
 
-## Relation to old L=16 / L=32 baselines
+## Single-head scope decision
 
-Independent seeding **changes** the random tensors relative to the original
-shared-PRNG baselines. After exporting new seed=`1` snapshots, treat new
-Verilator numbers as the regression baseline for that seed, or keep documenting
-legacy runs separately under `baseline-tests/`.
+`NUM_ATTENTION_HEADS=1` is intentional (laptop-scale testing), not incomplete
+work. Extending to multi-head later would need per-head Q/K slices, softmax
+probes per head, and a re-run of the seed×L grid — not assumed by this suite.
+
+## Optional flags
+
+| Flag | Role |
+| --- | --- |
+| `-DDBG_RESIDUAL_RMSNORM=1` | Verbose residual/RMSNorm pre-clip prints (assertions always on) |
+| `-DDBG_SOFTMAX_DIST=1` | Verbose per-row softmax vs-gold prints + H_norm info |
+| `-DUSE_LEGACY_QK_SCALES=1` | Old path: QUANT_SCALE for Q/K/score dequant, `RMSNORM_GAIN=0.4` (A/B only) |
+| `-DPRNG_SEED`, `-DSKIP_GOLD`, `-DUSE_EXPECTED`, `-DDUMP_EXPECTED` | Unchanged |
+
+Probe scripts (`probe_residual_rmsnorm.sh`, `probe_softmax_dist.sh`) remain for
+verbose TSV collection only — prefer `run_attention_baseline_grid.sh` for CI.
+
+## Artifacts
+
+- `correctness/expected/L*_D16_F64_seed1.h` — official baseline snapshots
+- `correctness/expected/include_*/transformer_expected.h` — include path for builds
+- `correctness/expected/legacy_pre_cal/` — superseded pre-calibration headers
+- `correctness/logs/` — Spike/Verilator / export logs
+
+## Changelog
+
+Calibrated ACC_SCALE_Q/K (`0.0059645441` / `0.0052780764`), SCORE_DEQUANT=`1/6`,
+and RMSNORM_GAIN=`0.33974210` are now the default baseline in
+`transformer_block_test.c` (replacing the old QUANT_SCALE / gain=0.4 path).
+`USE_CALIBRATED_QK_SCALES` was replaced by `USE_LEGACY_QK_SCALES` (default off)
+for A/B only. Residual/RMSNorm band checks and softmax fixed-vs-gold ΔH / Δmax_w
+assertions always run; `DBG_*` flags are verbose-only. Expected headers dropped
+the `_cal` suffix; pre-cal snapshots live under `expected/legacy_pre_cal/`.
+Entry point: `run_attention_baseline_grid.sh`.
