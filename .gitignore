@@ -4,3 +4,13 @@ baseline-tests/verilator-L32/
 correctness/logs/
 correctness/scripts/__pycache__/
 correctness/magnitude_sweep/logs/
+
+# Keep diagnostic scripts; ignore bulky Spike/build log dumps
+correctness/archive/diagnostics/**/*.spike.log
+correctness/archive/diagnostics/**/*.build.log
+correctness/archive/diagnostics/**/*.trace.txt
+correctness/archive/diagnostics/**/*.tsv
+correctness/archive/diagnostics/**/*.csv
+correctness/archive/diagnostics/**/*.json
+correctness/archive/diagnostics/**/*.log
+correctness/archive/diagnostics/**/summary.tsv
