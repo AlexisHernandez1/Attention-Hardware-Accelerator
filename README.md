@@ -45,7 +45,11 @@ seeds 1–5 × `L∈{16,32,64,128,256}`.
 ./correctness/scripts/run_attention_baseline_grid.sh
 ```
 
-Details: [`correctness/README.md`](correctness/README.md),
+**Performance baseline (authoritative):** [`BASELINE.md`](BASELINE.md) —
+build conditions (HW GEMM vs host Softmax/RMSNorm/Residual), full Spike 200-config
+grid, Verilator L=16–128 seed=1, and bottleneck analysis.
+
+Also: [`correctness/README.md`](correctness/README.md),
 [`sweeps/l_sweep/README.md`](sweeps/l_sweep/README.md).
 
 Historical (legacy shared-PRNG / pre-calibration) simulator notes:

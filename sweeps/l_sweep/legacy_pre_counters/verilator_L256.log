@@ -1,0 +1,55 @@
+=== Verilator L=256 seed=1 case=random (GemminiRocketConfig) ===
+result: PASS
+wall_clock_seconds: 125890
+TIMEOUT_CYCLES (+max-cycles ceiling): 12800000000
+total_cycles: 127162675
+total_cycles_vs_ceiling: 0.9935% of +max-cycles
+hit_timeout: no
+
+--- saturation (Verilator vs Spike random_L256_seed1) ---
+spike_reference: /home/users/ah072084/attention-hardware-accelerator/correctness/logs/l_sweep_full/random_L256_seed1.spike.log
+No saturation on any tensor (Verilator).
+Spike reference (/home/users/ah072084/attention-hardware-accelerator/correctness/logs/l_sweep_full/random_L256_seed1.spike.log): no saturation.
+saturation_unexpected_or_mismatch: no
+
+--- per-stage cycle breakdown ---
+QKV projections: 58543 cycles (0%)
+Attention scores: 55340 cycles (0%)
+Softmax: 126127010 cycles (99%)
+Attention output: 28264 cycles (0%)
+Output projection: 19165 cycles (0%)
+Residual add 1: 172539 cycles (0%)
+RMSNorm 1: 240061 cycles (0%)
+Feed-forward network: 50979 cycles (0%)
+Residual add 2: 170760 cycles (0%)
+RMSNorm 2: 240014 cycles (0%)
+Total: 127162675 cycles (100%)
+Total cycles: 127162675 (100%)
+
+--- data-movement byte estimate ---
+X: elements=4096, bytes/access=4096, accesses=4, estimated bytes=16384
+W_q: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_k: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_v: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_o: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_up: elements=1024, bytes/access=1024, accesses=1, estimated bytes=1024
+W_down: elements=1024, bytes/access=1024, accesses=1, estimated bytes=1024
+scores: elements=65536, bytes/access=65536, accesses=2, estimated bytes=131072
+attention weights: elements=65536, bytes/access=65536, accesses=2, estimated bytes=131072
+attention output: elements=4096, bytes/access=4096, accesses=2, estimated bytes=8192
+FFN intermediate: elements=16384, bytes/access=16384, accesses=2, estimated bytes=32768
+final output: elements=4096, bytes/access=4096, accesses=1, estimated bytes=4096
+total_estimated_bytes: 326656
+
+--- per-GEMM HW utilization (Gemmini EXE_ACTIVE_CYCLE counters; no synthesis) ---
+GEMM HW util Q: wall=4075 exe_active=396 loop_matmul_active=2185 ideal_mac_cycles=256 exe_busy=9% pe_mesh_util=64%
+GEMM HW util K: wall=2978 exe_active=481 loop_matmul_active=1868 ideal_mac_cycles=256 exe_busy=16% pe_mesh_util=53%
+GEMM HW util V: wall=2985 exe_active=479 loop_matmul_active=1899 ideal_mac_cycles=256 exe_busy=16% pe_mesh_util=53%
+GEMM HW util QKT: wall=38455 exe_active=5409 loop_matmul_active=37409 ideal_mac_cycles=4096 exe_busy=14% pe_mesh_util=75%
+GEMM HW util AttnV: wall=11495 exe_active=7880 loop_matmul_active=10216 ideal_mac_cycles=4096 exe_busy=68% pe_mesh_util=51%
+GEMM HW util O: wall=3194 exe_active=482 loop_matmul_active=1946 ideal_mac_cycles=256 exe_busy=15% pe_mesh_util=53%
+GEMM HW util FFN_up: wall=12430 exe_active=1073 loop_matmul_active=11267 ideal_mac_cycles=1024 exe_busy=8% pe_mesh_util=95%
+GEMM HW util FFN_down: wall=5040 exe_active=1919 loop_matmul_active=3859 ideal_mac_cycles=1024 exe_busy=38% pe_mesh_util=53%
+
+raw_verilator_log: /home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/logs/L256_D16_F64_seed1.verilator.log
+

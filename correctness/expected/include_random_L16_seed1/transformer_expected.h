@@ -1,5 +1,5 @@
-/* Auto-generated — do not hand-edit. */
-/* SEQ_LEN=16 D_MODEL=16 D_FF=64 PRNG_SEED=1 random */
+/* auto */
+/* L=16 D=16 F=64 seed=1 */
 #ifndef TRANSFORMER_EXPECTED_H
 #define TRANSFORMER_EXPECTED_H
 #include <stdint.h>

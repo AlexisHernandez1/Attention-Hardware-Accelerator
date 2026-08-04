@@ -1,27 +1,141 @@
-# Official Sequence-Length Sweep Baseline (seed=1)
+# Official Sequence-Length Sweep Baseline (seed=1 focus + full Spike grid)
 
-## Setup
+**Authoritative writeup:** [`../../BASELINE.md`](../../BASELINE.md) (full Spike 200-config grid, Verilator L=16–128, analysis).  
+This file keeps the L-sweep tables next to the sweep tooling.
 
-- **Official generator:** independent per-tensor PRNG streams from `PRNG_SEED=1`.
-- Fixed: `D_MODEL=16`, `D_FF=64`; varied `SEQ_LEN`: 16, 32, 64, 128, 256.
-- Spike: float gold + export `expected_final` snapshot.
-- Verilator: `SKIP_GOLD=1` + `USE_EXPECTED` (exact int8 match to Spike snapshot).
-- Timing from cycle-accurate `GemminiRocketConfig` only; Spike cycles are not RTL performance.
-- Legacy shared-PRNG baselines under `baseline-tests/` are historical only — do not mix into before/after tables.
+---
 
-## Verilator Results
+## Architectural / build conditions (read first)
 
-Each stage cell is `cycles (percent of total)`.
+This baseline is **current Gemmini hardware usage, unmodified** — not a claim about best possible accelerator performance.
 
-| L | Total cycles | QKV projections | Attention scores | Softmax | Attention output | Output projection | Residual add 1 | RMSNorm 1 | Feed-forward network | Residual add 2 | RMSNorm 2 | Result |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 16 | 150252 | 2317 (1%) | 637 (0%) | 98346 (65%) | 629 (0%) | 615 (0%) | 9514 (6%) | 13506 (8%) | 1795 (1%) | 9505 (6%) | 13388 (8%) | PASS |
-| 32 | 492428 | 2684 (0%) | 1000 (0%) | 393338 (79%) | 909 (0%) | 731 (0%) | 18909 (3%) | 26793 (5%) | 2521 (0%) | 18843 (3%) | 26700 (5%) | PASS |
-| 64 | 1763595 | 3443 (0%) | 2390 (0%) | 1577570 (89%) | 1760 (0%) | 988 (0%) | 37707 (2%) | 49344 (2%) | 3724 (0%) | 37544 (2%) | 49125 (2%) | PASS |
-| 128 | 6659456 | 5923 (0%) | 8060 (0%) | 6279620 (94%) | 4136 (0%) | 1755 (0%) | 77937 (1%) | 98579 (1%) | 7573 (0%) | 77505 (1%) | 98368 (1%) | PASS |
-| 256 | 26004206 | 10250 (0%) | 38062 (0%) | 25248498 (97%) | 11548 (0%) | 3028 (0%) | 140019 (0%) | 198863 (0%) | 17375 (0%) | 138131 (0%) | 198432 (0%) | PASS |
+| Stage | Where it runs | Implication |
+| --- | --- | --- |
+| QKV / Scores / Attn×V / Output proj / FFN | **Gemmini hardware** (`tiled_matmul_auto`) | Real accelerator path. |
+| Softmax | **Host scalar C** | Upstream Normalizer/`SOFTMAX` exists but is **disabled** (`has_normalizations=false`) and experimental; integer path ≠ this project’s float + largest-remainder softmax. **No HW softmax in use.** |
+| RMSNorm | **Host scalar C** | Gemmini has **no RMSNorm mode** (only disabled LayerNorm). **No HW RMSNorm available.** |
+| Residual 1 / 2 | **Host scalar C** | `tiled_resadd_auto` exists and works but is **unused** here — near-term optimization not yet applied. |
 
-## Memory-Footprint Checks
+Softmax / RMSNorm / Residual dominating cycles is the expected result of those three stages running on the host. Project work (HW softmax, HW RMSNorm, residual → `tiled_resadd_auto`) targets those bottlenecks.
+
+**Build:** permanent counters-inline GEMM timing (deferred util printf). No `GEMM_HW_UTIL_DEBUG` / overhead-test flags.  
+**Fixed dims:** `D_MODEL=16`, `D_FF=64`. Varied `SEQ_LEN`. Independent per-tensor PRNG from `PRNG_SEED`.  
+**Do not merge** [`legacy_pre_counters/`](legacy_pre_counters/) L=256 Verilator artifacts into these tables (different GEMM timing path; see that README).
+
+---
+
+## Spike results
+
+Spike + Gemmini functional model. Cycle shares are informative; Spike PE util counters are **not** cycle-accurate and are omitted.
+
+### Full grid correctness (8 cases × L ∈ {16…256} × seeds 1–5)
+
+**200 / 200 PASS.**
+
+| Case | PASS | Saturation banner |
+| --- | ---: | --- |
+| random | 25/25 | none |
+| all_zeros | 25/25 | none |
+| all_ones | 25/25 | 25/25 (intentional rails) |
+| all_max_mag | 25/25 | 25/25 (intentional rails) |
+| one_hot | 25/25 | 25/25 (expected) |
+| checkerboard | 25/25 | 25/25 (expected) |
+| all_negative | 25/25 | none |
+| near_zero | 25/25 | none |
+
+Prior all_negative L=256 Residual-1 preclip margin exceedances **do not appear** in this grid (L=256 seeds 1–5 all PASS; Residual-1 `max_abs` 84–99). See `BASELINE.md`.
+
+### Random seed=1 — per-stage cycles
+
+| L | QKV | Scores | Softmax | Attn×V | Out | Res1 | RMS1 | FFN | Res2 | RMS2 | Total | Result |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 16 | 1071 (1%) | 361 (0%) | 62192 (67%) | 360 (0%) | 359 (0%) | 6568 (7%) | 7402 (8%) | 718 (1%) | 6570 (7%) | 7403 (8%) | 93004 | PASS |
+| 32 | 1090 (0%) | 368 (0%) | 353258 (86%) | 366 (0%) | 365 (0%) | 13095 (3%) | 14713 (4%) | 730 (0%) | 13095 (3%) | 14712 (4%) | 411792 | PASS |
+| 64 | 1093 (0%) | 369 (0%) | 2208986 (95%) | 367 (0%) | 366 (0%) | 26146 (1%) | 29332 (1%) | 732 (0%) | 26151 (1%) | 29336 (1%) | 2322878 | PASS |
+| 128 | 1627 (0%) | 1003 (0%) | 13462849 (98%) | 544 (0%) | 543 (0%) | 54323 (0%) | 58599 (0%) | 1081 (0%) | 54331 (0%) | 58607 (0%) | 13693507 | PASS |
+| 256 | 2251 (0%) | 2213 (0%) | 90329500 (99%) | 752 (0%) | 751 (0%) | 104511 (0%) | 117106 (0%) | 1491 (0%) | 104519 (0%) | 117114 (0%) | 90780208 | PASS |
+
+### Random — total cycles, all seeds (all PASS)
+
+| L | seed1 | seed2 | seed3 | seed4 | seed5 | mean |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 16 | 93004 | 93879 | 93176 | 92769 | 94442 | 93454 |
+| 32 | 411792 | 403676 | 405046 | 407464 | 412737 | 408143 |
+| 64 | 2322878 | 2291205 | 2185647 | 2219797 | 2272303 | 2258366 |
+| 128 | 13693507 | 13218969 | 12569338 | 12787765 | 13107375 | 13075391 |
+| 256 | 90780208 | 87289845 | 81481936 | 84356552 | 85004673 | 85782643 |
+
+### Softmax stats (random seed=1)
+
+| L | mean_maxp | mean_entropy | ln(L) |
+| ---: | ---: | ---: | ---: |
+| 16 | 0.208 | 2.430 | 2.773 |
+| 32 | 0.129 | 3.133 | 3.466 |
+| 64 | 0.080 | 3.814 | 4.159 |
+| 128 | 0.051 | 4.492 | 4.852 |
+| 256 | 0.031 | 5.174 | 5.545 |
+
+### Traffic (logical estimate, bytes)
+
+| L | Total |
+| ---: | ---: |
+| 16 | 7936 |
+| 32 | 14848 |
+| 64 | 34816 |
+| 128 | 99328 |
+| 256 | 326656 |
+
+---
+
+## Verilator results (`GemminiRocketConfig`)
+
+Random seed=1, L=16/32/64/128, Spike-exported expected int8. Counters-inline GEMM; util batched after timers.
+
+**4 / 4 PASS.** No sat. No timeout. L=256 not in this baseline.
+
+### Per-stage cycles
+
+| L | QKV | Scores | Softmax | Attn×V | Out | Res1 | RMS1 | FFN | Res2 | RMS2 | Total | Result |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 16 | 2541 (2%) | 747 (0%) | 109919 (65%) | 725 (0%) | 735 (0%) | 11147 (7%) | 15192 (9%) | 2072 (1%) | 11001 (7%) | 15043 (9%) | 169122 | PASS |
+| 32 | 2839 (0%) | 1109 (0%) | 619399 (85%) | 1045 (0%) | 832 (0%) | 21963 (3%) | 30084 (4%) | 2659 (0%) | 21813 (3%) | 29901 (4%) | 731644 | PASS |
+| 64 | 3646 (0%) | 2462 (0%) | 3831625 (95%) | 1889 (0%) | 1084 (0%) | 43893 (1%) | 59205 (1%) | 3902 (0%) | 43766 (1%) | 59007 (1%) | 4050479 | PASS |
+| 128 | 6010 (0%) | 8295 (0%) | 21067285 (98%) | 3751 (0%) | 1787 (0%) | 87505 (0%) | 118007 (1%) | 7789 (0%) | 86790 (0%) | 117943 (1%) | 21505162 | PASS |
+
+### GEMM utilization (RTL — meaningful)
+
+| L | QKV mesh | Scores mesh | Attn×V mesh | Out mesh | FFN mesh |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 16 | 53% | 35% | 53% | 53% | 64% |
+| 32 | 60% | 60% | 61% | 66% | 66% |
+| 64 | 56% | 70% | 75% | 57% | 69% |
+| 128 | 55% | 75% | 52% | 54% | 67% |
+
+Full exe_act / exe_busy tables: see `BASELINE.md`.
+
+### Wall-clock simulation time (ops only — **not** HW performance)
+
+| L | Wall (s) | Wall (h) |
+| ---: | ---: | ---: |
+| 16 | 1213 | 0.34 |
+| 32 | 2477 | 0.69 |
+| 64 | 7403 | 2.06 |
+| 128 | 28295 | 7.86 |
+
+An earlier (pre-counters-inline) L=256 Verilator log exists in [`legacy_pre_counters/`](legacy_pre_counters/); it has not been independently confirmed for use with this baseline and must not be merged into the table above. See [`legacy_pre_counters/README.md`](legacy_pre_counters/README.md).
+
+---
+
+## Key findings (short)
+
+1. **Softmax (host) owns the block** — 65% of Verilator cycles at L=16, 98% at L=128; Spike reaches 99.5% at L=256. Doubling L multiplies Softmax cycles by ~5.5–6.7× in these runs.
+2. **Residual + RMSNorm** are the other host-scalar costs; absolute cycles grow ~with L; share falls as Softmax grows.
+3. **GEMM share** is ~4% at L=16 (Verilator) and **falls below 1%** by L=64+ — Gemmini matmuls are fast relative to host Softmax, not absent.
+4. **Correctness clean** — 200/200 Spike, 4/4 Verilator; no open all_negative L=256 margin FAIL on this build.
+
+---
+
+## Memory-footprint checks
 
 | L | int8 tensors | float32 gold tensors | int32 zero-bias tensors | total declared buffers |
 | --- | --- | --- | --- | --- |
@@ -31,10 +145,10 @@ Each stage cell is `cycles (percent of total)`.
 | 128 | 66560 bytes | 266240 bytes | 106496 bytes | 439296 bytes |
 | 256 | 195584 bytes | 782336 bytes | 344064 bytes | 1321984 bytes |
 
-Expected snapshots live in `correctness/expected/L*_D16_F64_seed1.h`.
+Expected snapshots: `correctness/expected/L*_D16_F64_seed1.h`.
 
 ## Notes
 
-- Softmax share of runtime should grow with L (host scalar `expf` over L×L).
-- Seed 1 may still show K saturation; that is frozen for this official baseline.
-- A `Verilator +max-cycles timeout` means the sim-cycle budget was too small, not necessarily a functional FAIL.
+- Softmax share of runtime grows with L (host scalar over L×L).
+- A `Verilator +max-cycles timeout` is a sim-budget issue, not necessarily a functional FAIL.
+- Raw logs: `chipyard/tmp_baseline_validation/phase1_spike/`, `phase2_verilator/`.

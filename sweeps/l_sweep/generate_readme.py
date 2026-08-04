@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Generate the official seed-1 L-sweep README from per-configuration run logs."""
+"""Generate the official seed-1 L-sweep README from per-configuration run logs.
+
+Cost note (do not change generation logic): regenerating from a full L=16…256
+Verilator log set under the current counters-inline build implies an L=256 run
+of roughly ~32–40 hours wall-clock (from the L=16–128 Softmax ~L² trend).
+Legacy pre-counters-inline L=256 artifacts (if present) live under
+legacy_pre_counters/ and are not the current baseline table.
+"""
 
 from pathlib import Path
 import re

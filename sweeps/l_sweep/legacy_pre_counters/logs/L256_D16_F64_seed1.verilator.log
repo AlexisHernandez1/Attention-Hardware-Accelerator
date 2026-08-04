@@ -1,0 +1,83 @@
+make: Entering directory '/home/users/ah072084/chipyard/sims/verilator'
+if [ "/home/users/ah072084/attention-hardware-accelerator/correctness/binaries/verilator_l_seed1/transformer_block_test-L256_D16_F64_seed1-baremetal" != "none" ] && [ ! -f "/home/users/ah072084/attention-hardware-accelerator/correctness/binaries/verilator_l_seed1/transformer_block_test-L256_D16_F64_seed1-baremetal" ]; then printf "\n\nBinary /home/users/ah072084/attention-hardware-accelerator/correctness/binaries/verilator_l_seed1/transformer_block_test-L256_D16_F64_seed1-baremetal not found\n\n"; exit 1; fi
+(set -o pipefail &&  /home/users/ah072084/chipyard/sims/verilator/simulator-chipyard.harness-GemminiRocketConfig \
+	+permissive \
+	+dramsim +dramsim_ini_dir=/home/users/ah072084/chipyard/generators/testchipip/src/main/resources/dramsim2_ini +max-cycles=12800000000     \
+	+permissive-off \
+	/home/users/ah072084/attention-hardware-accelerator/correctness/binaries/verilator_l_seed1/transformer_block_test-L256_D16_F64_seed1-baremetal \
+	 \
+	</dev/null | tee /home/users/ah072084/chipyard/sims/verilator/output/chipyard.harness.TestHarness.GemminiRocketConfig/transformer_block_test-L256_D16_F64_seed1-baremetal.log)
+== Loading device model file '/home/users/ah072084/chipyard/generators/testchipip/src/main/resources/dramsim2_ini/DDR3_micron_64M_8B_x4_sg15.ini%Warning: System has stack size 8192 kb which may be too small; suggest 'ulimit -c 15363' or larger
+[UART] UART0 is here (stdin/stdout).
+' == 
+== Loading system model file '/home/users/ah072084/chipyard/generators/testchipip/src/main/resources/dramsim2_ini/system.ini' == 
+===== MemorySystem 0 =====
+CH. 0 TOTAL_STORAGE : 4096MB | 1 Ranks | 16 Devices per rank
+DRAMSim2 Clock Frequency =666666666Hz, CPU Clock Frequency=500000000Hz
+Transformer decoder baseline: L=256 D=16 D_FF=64 DIM=16 PRNG_SEED=1 heads=1
+input_case id=0 (random)
+QUANT_SCALE=0.008, final tolerance=0.039 (5x scale), SKIP_GOLD=1
+Q/K scale preflight: D=16 INPUT=64 QK_W=56
+  ACC_SCALE_Q=0.006 ACC_SCALE_K=0.005 SCORE_SCALE=0.002 (QUANT/sqrt(D)) SCORE_DEQUANT=0.167 RMSNORM_GAIN=0.340
+  theoretical 3-sigma int8: Q=148.104 K=131.058 headroom=108
+input_case id=0 (random)
+X@W_q raw-acc stats: mean=-7.458 std=4437.517 range=[-15244, 15541] ACC_SCALE=0.006 => est 3-sigma int8=79.403
+X@W_k raw-acc stats: mean=-146.688 std=4836.348 range=[-17987, 18887] ACC_SCALE=0.005 => est 3-sigma int8=76.580
+SKIP_GOLD=1: using Spike-exported expected_final snapshot
+GEMM HW util Q: wall=4075 exe_active=396 loop_matmul_active=2185 ideal_mac_cycles=256 exe_busy=9% pe_mesh_util=64%
+GEMM HW util K: wall=2978 exe_active=481 loop_matmul_active=1868 ideal_mac_cycles=256 exe_busy=16% pe_mesh_util=53%
+GEMM HW util V: wall=2985 exe_active=479 loop_matmul_active=1899 ideal_mac_cycles=256 exe_busy=16% pe_mesh_util=53%
+Q raw int8 range: [-91, 93] max_abs=93
+K raw int8 range: [-95, 100] max_abs=100
+V raw int8 range: [-20, 17] max_abs=20
+GEMM HW util QKT: wall=38455 exe_active=5409 loop_matmul_active=37409 ideal_mac_cycles=4096 exe_busy=14% pe_mesh_util=75%
+Attention scores raw int8 range: [-28, 29] max_abs=29
+Softmax weights raw int8 range: [0, 24] max_abs=24
+Softmax logit stats (SCORE_DEQUANT): mean_entropy=5.174 ln(L)=5.545 mean_maxp=0.031 uniform_1/L=0.004
+GEMM HW util AttnV: wall=11495 exe_active=7880 loop_matmul_active=10216 ideal_mac_cycles=4096 exe_busy=68% pe_mesh_util=51%
+Attention output raw int8 range: [-7, 6] max_abs=7
+GEMM HW util O: wall=3194 exe_active=482 loop_matmul_active=1946 ideal_mac_cycles=256 exe_busy=15% pe_mesh_util=53%
+Output projection raw int8 range: [-2, 2] max_abs=2
+Residual 1 raw int8 range: [-65, 65] max_abs=65
+RMSNorm 1 raw int8 range: [-104, 94] max_abs=104
+GEMM HW util FFN_up: wall=12430 exe_active=1073 loop_matmul_active=11267 ideal_mac_cycles=1024 exe_busy=8% pe_mesh_util=95%
+GEMM HW util FFN_down: wall=5040 exe_active=1919 loop_matmul_active=3859 ideal_mac_cycles=1024 exe_busy=38% pe_mesh_util=53%
+FFN up raw int8 range: [0, 24] max_abs=24
+FFN down raw int8 range: [-6, 5] max_abs=6
+Residual 2 raw int8 range: [-101, 95] max_abs=101
+Final RMSNorm raw int8 range: [-102, 95] max_abs=102
+
+Transformer decoder-block timing
+QKV projections cycles: 58543 (0%)
+  Total MACs: 196608, Ideal mac-cycles: 768
+Attention scores cycles: 55340 (0%)
+  Total MACs: 1048576, Ideal mac-cycles: 4096
+Softmax cycles: 126127010 (99%)
+Attention output cycles: 28264 (0%)
+  Total MACs: 1048576, Ideal mac-cycles: 4096
+Output projection cycles: 19165 (0%)
+  Total MACs: 65536, Ideal mac-cycles: 256
+Residual add 1 cycles: 172539 (0%)
+RMSNorm 1 cycles: 240061 (0%)
+Feed-forward network cycles: 50979 (0%)
+  Total MACs: 524288, Ideal mac-cycles: 2048
+Residual add 2 cycles: 170760 (0%)
+RMSNorm 2 cycles: 240014 (0%)
+Total cycles: 127162675 (100%)
+
+Logical scratchpad/main-memory traffic estimate
+X: elements=4096, bytes/access=4096, accesses=4, estimated bytes=16384
+W_q: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_k: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_v: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_o: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_up: elements=1024, bytes/access=1024, accesses=1, estimated bytes=1024
+W_down: elements=1024, bytes/access=1024, accesses=1, estimated bytes=1024
+scores: elements=65536, bytes/access=65536, accesses=2, estimated bytes=131072
+attention weights: elements=65536, bytes/access=65536, accesses=2, estimated bytes=131072
+attention output: elements=4096, bytes/access=4096, accesses=2, estimated bytes=8192
+FFN intermediate: elements=16384, bytes/access=16384, accesses=2, estimated bytes=32768
+final output: elements=4096, bytes/access=4096, accesses=1, estimated bytes=4096
+PASS
+- /home/users/ah072084/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish
+make: Leaving directory '/home/users/ah072084/chipyard/sims/verilator'

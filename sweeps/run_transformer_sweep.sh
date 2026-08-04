@@ -141,7 +141,7 @@ cp "$BINARY" "$BIN_DIR/transformer_block_test-${TAG}-baremetal"
 
 # Softmax dominates and scales ~L^2; no gold on this binary.
 scale=$(( SEQ_LEN / 16 ))
-TIMEOUT_CYCLES=${TIMEOUT_CYCLES:-$(( 20000000 * scale * scale ))}
+TIMEOUT_CYCLES=${TIMEOUT_CYCLES:-$(( 50000000 * scale * scale ))}
 VERILATOR_TIMEOUT_SECONDS=${VERILATOR_TIMEOUT_SECONDS:-$(( 2 * 900 * scale * scale ))}
 
 verilator_start_seconds=$(date +%s)

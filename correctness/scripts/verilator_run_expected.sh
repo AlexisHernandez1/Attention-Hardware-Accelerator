@@ -12,8 +12,8 @@ L=$1
 D_MODEL=$2
 D_FF=$3
 SEED=$4
-# Without gold, measured work is small; 20M is generous for L<=128.
-TIMEOUT_CYCLES=${5:-20000000}
+# Softmax ~L²; L=256 can exceed 20M. Default ceiling 50M for all Verilator runs.
+TIMEOUT_CYCLES=${5:-50000000}
 WALL_TIMEOUT_SECONDS=${WALL_TIMEOUT_SECONDS:-$(( 2 * 3600 ))}
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)

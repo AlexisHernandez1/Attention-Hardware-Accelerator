@@ -1,0 +1,7 @@
+/home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/legacy_pre_counters/MANIFEST.txt
+/home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/legacy_pre_counters/README.md
+/home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/legacy_pre_counters/logs/L256_D16_F64_seed1.verilator.log
+/home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/legacy_pre_counters/logs/L256_D16_F64_seed1.verilator_seconds
+/home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/legacy_pre_counters/nohup_launch.log
+/home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/legacy_pre_counters/verilator_L256.log
+/home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/legacy_pre_counters/verilator_seed1_unattended_stdout.log

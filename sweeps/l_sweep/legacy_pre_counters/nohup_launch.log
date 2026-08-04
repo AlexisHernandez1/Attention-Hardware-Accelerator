@@ -1,0 +1,45 @@
+CEILING_CONFIRM harness verilator_run_expected.sh default TIMEOUT_CYCLES=50000000
+CEILING_CONFIRM Chipyard variables.mk (untouched): 334:TIMEOUT_CYCLES = 10000000
+Started: 2026-07-30T03:10:53-07:00
+
+########## L=16 TIMEOUT_CYCLES=50000000 WALL=2700s ##########
+[export] L16_D16_F64_seed1
+[rtl-build] L16_D16_F64_seed1
+[verilator] L16_D16_F64_seed1 ceiling=50000000
+5:	+dramsim +dramsim_ini_dir=/home/users/ah072084/chipyard/generators/testchipip/src/main/resources/dramsim2_ini +max-cycles=50000000     \
+Wrote /home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/verilator_L16.log result=PASS unexpected_sat=False
+L=16 done wall=1125s write_rc=0 make_rc=0
+
+########## L=32 TIMEOUT_CYCLES=200000000 WALL=10800s ##########
+[export] L32_D16_F64_seed1
+[rtl-build] L32_D16_F64_seed1
+[verilator] L32_D16_F64_seed1 ceiling=200000000
+5:	+dramsim +dramsim_ini_dir=/home/users/ah072084/chipyard/generators/testchipip/src/main/resources/dramsim2_ini +max-cycles=200000000     \
+Wrote /home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/verilator_L32.log result=PASS unexpected_sat=False
+L=32 done wall=2338s write_rc=0 make_rc=0
+
+########## L=64 TIMEOUT_CYCLES=800000000 WALL=43200s ##########
+[export] L64_D16_F64_seed1
+[rtl-build] L64_D16_F64_seed1
+[verilator] L64_D16_F64_seed1 ceiling=800000000
+5:	+dramsim +dramsim_ini_dir=/home/users/ah072084/chipyard/generators/testchipip/src/main/resources/dramsim2_ini +max-cycles=800000000     \
+Wrote /home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/verilator_L64.log result=PASS unexpected_sat=False
+L=64 done wall=7128s write_rc=0 make_rc=0
+
+########## L=128 TIMEOUT_CYCLES=3200000000 WALL=172800s ##########
+[export] L128_D16_F64_seed1
+[rtl-build] L128_D16_F64_seed1
+[verilator] L128_D16_F64_seed1 ceiling=3200000000
+5:	+dramsim +dramsim_ini_dir=/home/users/ah072084/chipyard/generators/testchipip/src/main/resources/dramsim2_ini +max-cycles=3200000000     \
+Wrote /home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/verilator_L128.log result=PASS unexpected_sat=False
+L=128 done wall=28689s write_rc=0 make_rc=0
+
+########## L=256 TIMEOUT_CYCLES=12800000000 WALL=691200s ##########
+[export] L256_D16_F64_seed1
+[rtl-build] L256_D16_F64_seed1
+[verilator] L256_D16_F64_seed1 ceiling=12800000000
+5:	+dramsim +dramsim_ini_dir=/home/users/ah072084/chipyard/generators/testchipip/src/main/resources/dramsim2_ini +max-cycles=12800000000     \
+Wrote /home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/verilator_L256.log result=PASS unexpected_sat=False
+L=256 done wall=125890s write_rc=0 make_rc=0
+Finished all L values: 2026-08-01T01:03:58-07:00
+Reports: /home/users/ah072084/attention-hardware-accelerator/sweeps/l_sweep/verilator_L{16,32,64,128,256}.log
