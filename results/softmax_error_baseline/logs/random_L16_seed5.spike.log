@@ -1,0 +1,69 @@
+Transformer decoder baseline: L=16 D=16 D_FF=64 DIM=16 PRNG_SEED=5 heads=1
+input_case id=0 (random)
+QUANT_SCALE=0.008, final tolerance=0.039 (5x scale), SKIP_GOLD=0
+Q/K scale preflight: D=16 INPUT=64 QK_W=56
+  ACC_SCALE_Q=0.006 ACC_SCALE_K=0.005 SCORE_SCALE=0.002 (QUANT/sqrt(D)) SCORE_DEQUANT=0.167 RMSNORM_GAIN=0.340
+  theoretical 3-sigma int8: Q=148.104 K=131.058 headroom=108
+input_case id=0 (random)
+X@W_q raw-acc stats: mean=-162.895 std=4622.778 range=[-12207, 10191] ACC_SCALE=0.006 => est 3-sigma int8=82.718
+X@W_k raw-acc stats: mean=299.918 std=4734.431 range=[-11307, 15707] ACC_SCALE=0.005 => est 3-sigma int8=74.966
+Gold softmax float range: [0.003, 0.297], raw levels at QUANT_SCALE: [0.427, 38.072]
+Q raw int8 range: [-73, 61] max_abs=73
+K raw int8 range: [-60, 83] max_abs=83
+V raw int8 range: [-13, 16] max_abs=16
+Attention scores raw int8 range: [-14, 13] max_abs=14
+Softmax weights raw int8 range: [0, 38] max_abs=38
+Softmax logit stats (SCORE_DEQUANT): mean_entropy=2.488 ln(L)=2.773 mean_maxp=0.193 uniform_1/L=0.063
+SOFTMAX_QUANT_ERR L=16 seed=5 n=256 mae=0.002 max=0.005 max_ulps=0.645 mae_ulps=0.256 quant_scale=0.008 hist_ulps=[0-0.5)=240 [0.5-1)=16 [1-2)=0 [2-4)=0 [4-8)=0 [8-16)=0 [16-32)=0 [32+)=0 max_at=[12][8] gold=0.042 quant=0.047
+Attention output raw int8 range: [-5, 6] max_abs=6
+Output projection raw int8 range: [-2, 2] max_abs=2
+Residual 1 raw int8 range: [-64, 64] max_abs=64
+RMSNorm 1 raw int8 range: [-83, 80] max_abs=83
+FFN up raw int8 range: [0, 17] max_abs=17
+FFN down raw int8 range: [-4, 3] max_abs=4
+Residual 2 raw int8 range: [-84, 80] max_abs=84
+Final RMSNorm raw int8 range: [-84, 81] max_abs=84
+
+Transformer decoder-block timing
+QKV projections cycles: 1071 (1%)
+  Total MACs: 12288, Ideal mac-cycles: 48
+Attention scores cycles: 361 (0%)
+  Total MACs: 4096, Ideal mac-cycles: 16
+Softmax cycles: 63729 (69%)
+Attention output cycles: 360 (0%)
+  Total MACs: 4096, Ideal mac-cycles: 16
+Output projection cycles: 359 (0%)
+  Total MACs: 4096, Ideal mac-cycles: 16
+Residual add 1 cycles: 5198 (5%)
+RMSNorm 1 cycles: 7390 (8%)
+Feed-forward network cycles: 718 (0%)
+  Total MACs: 32768, Ideal mac-cycles: 128
+Residual add 2 cycles: 5199 (5%)
+RMSNorm 2 cycles: 7389 (8%)
+Total cycles: 91774 (100%)
+
+GEMM hardware utilization (batched; counters inside stage timers)
+stage                            wall    exe_act   loop_act    ideal  exe_busy  mesh_util
+QKV projections                  1071       9071       8628       48      846%         0%
+Attention scores                  361       1858       2658       16      514%         0%
+Attention output                  360       2230       2663       16      619%         0%
+Output projection                 359       3388       3170       16      943%         0%
+Feed-forward network              718       5279       5918      128      735%         2%
+
+Logical scratchpad/main-memory traffic estimate
+X: elements=256, bytes/access=256, accesses=4, estimated bytes=1024
+W_q: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_k: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_v: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_o: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_up: elements=1024, bytes/access=1024, accesses=1, estimated bytes=1024
+W_down: elements=1024, bytes/access=1024, accesses=1, estimated bytes=1024
+scores: elements=256, bytes/access=256, accesses=2, estimated bytes=512
+attention weights: elements=256, bytes/access=256, accesses=2, estimated bytes=512
+attention output: elements=256, bytes/access=256, accesses=2, estimated bytes=512
+FFN intermediate: elements=1024, bytes/access=1024, accesses=2, estimated bytes=2048
+final output: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+FINAL_GOLD_ERR L=16 seed=5 n=256 mae=0.004 max=0.012 tol=0.039 max_over_tol=0.307 n_over_tol=0 hist_tol=[0-0.25)=252 [0.25-0.5)=4 [0.5-0.75)=0 [0.75-1)=0 [1-2)=0 [2-4)=0 [4-8)=0 [8+)=0
+PASS
+Gemmini extension configured with:
+    dim = 16

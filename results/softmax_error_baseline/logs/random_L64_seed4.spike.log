@@ -1,0 +1,69 @@
+Transformer decoder baseline: L=64 D=16 D_FF=64 DIM=16 PRNG_SEED=4 heads=1
+input_case id=0 (random)
+QUANT_SCALE=0.008, final tolerance=0.039 (5x scale), SKIP_GOLD=0
+Q/K scale preflight: D=16 INPUT=64 QK_W=56
+  ACC_SCALE_Q=0.006 ACC_SCALE_K=0.005 SCORE_SCALE=0.002 (QUANT/sqrt(D)) SCORE_DEQUANT=0.167 RMSNORM_GAIN=0.340
+  theoretical 3-sigma int8: Q=148.104 K=131.058 headroom=108
+input_case id=0 (random)
+X@W_q raw-acc stats: mean=141.667 std=4865.607 range=[-17935, 15585] ACC_SCALE=0.006 => est 3-sigma int8=87.063
+X@W_k raw-acc stats: mean=148.586 std=4870.519 range=[-19880, 18849] ACC_SCALE=0.005 => est 3-sigma int8=77.121
+Gold softmax float range: [0.000, 0.441], raw levels at QUANT_SCALE: [0.002, 56.389]
+Q raw int8 range: [-107, 93] max_abs=107
+K raw int8 range: [-105, 99] max_abs=105
+V raw int8 range: [-17, 15] max_abs=17
+Attention scores raw int8 range: [-31, 30] max_abs=31
+Softmax weights raw int8 range: [0, 56] max_abs=56
+Softmax logit stats (SCORE_DEQUANT): mean_entropy=3.673 ln(L)=4.159 mean_maxp=0.109 uniform_1/L=0.016
+SOFTMAX_QUANT_ERR L=64 seed=4 n=4096 mae=0.002 max=0.005 max_ulps=0.619 mae_ulps=0.259 quant_scale=0.008 hist_ulps=[0-0.5)=3874 [0.5-1)=222 [1-2)=0 [2-4)=0 [4-8)=0 [8-16)=0 [16-32)=0 [32+)=0 max_at=[33][14] gold=0.011 quant=0.016
+Attention output raw int8 range: [-6, 8] max_abs=8
+Output projection raw int8 range: [-2, 2] max_abs=2
+Residual 1 raw int8 range: [-65, 64] max_abs=65
+RMSNorm 1 raw int8 range: [-93, 85] max_abs=93
+FFN up raw int8 range: [0, 21] max_abs=21
+FFN down raw int8 range: [-4, 5] max_abs=5
+Residual 2 raw int8 range: [-93, 87] max_abs=93
+Final RMSNorm raw int8 range: [-94, 86] max_abs=94
+
+Transformer decoder-block timing
+QKV projections cycles: 1093 (0%)
+  Total MACs: 49152, Ideal mac-cycles: 192
+Attention scores cycles: 369 (0%)
+  Total MACs: 65536, Ideal mac-cycles: 256
+Softmax cycles: 2122325 (95%)
+Attention output cycles: 367 (0%)
+  Total MACs: 65536, Ideal mac-cycles: 256
+Output projection cycles: 366 (0%)
+  Total MACs: 16384, Ideal mac-cycles: 64
+Residual add 1 cycles: 20558 (0%)
+RMSNorm 1 cycles: 29341 (1%)
+Feed-forward network cycles: 732 (0%)
+  Total MACs: 131072, Ideal mac-cycles: 512
+Residual add 2 cycles: 20559 (0%)
+RMSNorm 2 cycles: 29341 (1%)
+Total cycles: 2225051 (100%)
+
+GEMM hardware utilization (batched; counters inside stage timers)
+stage                            wall    exe_act   loop_act    ideal  exe_busy  mesh_util
+QKV projections                  1093       9071       8628      192      829%         2%
+Attention scores                  369       1858       2658      256      503%        13%
+Attention output                  367       2230       2663      256      607%        11%
+Output projection                 366       3388       3170       64      925%         1%
+Feed-forward network              732       5279       5918      512      721%         9%
+
+Logical scratchpad/main-memory traffic estimate
+X: elements=1024, bytes/access=1024, accesses=4, estimated bytes=4096
+W_q: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_k: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_v: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_o: elements=256, bytes/access=256, accesses=1, estimated bytes=256
+W_up: elements=1024, bytes/access=1024, accesses=1, estimated bytes=1024
+W_down: elements=1024, bytes/access=1024, accesses=1, estimated bytes=1024
+scores: elements=4096, bytes/access=4096, accesses=2, estimated bytes=8192
+attention weights: elements=4096, bytes/access=4096, accesses=2, estimated bytes=8192
+attention output: elements=1024, bytes/access=1024, accesses=2, estimated bytes=2048
+FFN intermediate: elements=4096, bytes/access=4096, accesses=2, estimated bytes=8192
+final output: elements=1024, bytes/access=1024, accesses=1, estimated bytes=1024
+FINAL_GOLD_ERR L=64 seed=4 n=1024 mae=0.004 max=0.013 tol=0.039 max_over_tol=0.339 n_over_tol=0 hist_tol=[0-0.25)=1004 [0.25-0.5)=20 [0.5-0.75)=0 [0.75-1)=0 [1-2)=0 [2-4)=0 [4-8)=0 [8+)=0
+PASS
+Gemmini extension configured with:
+    dim = 16
