@@ -1,9 +1,11 @@
 # Official Performance Baseline
 
 **Status:** Authoritative baseline for this project going forward.  
-**Build:** Current permanent `transformer_block_test` — GEMM stages use counters-inline timing with deferred utilization printf. No `GEMM_HW_UTIL_DEBUG` / `GEMM_COUNTER_OVERHEAD_TEST` paths.  
+**Build:** Current permanent `transformer_block_test` — GEMM stages use counters-inline timing with deferred utilization printf; **Residual 1/2 use Gemmini `tiled_resadd_auto` by default** (`USE_HW_RESADD=1`, identity mvin/acc scales, `relu=false`, WS, with a `-128→-127` post-pass to match the former scalar clip). Override with `-DUSE_HW_RESADD=0` only for A/B against the old scalar residual path.  
 **Config:** Single-head decoder block, `D_MODEL=16`, `D_FF=64`, `DIM=16`, calibrated Q/K scales / `SCORE_DEQUANT` / `RMSNORM_GAIN` defaults. Softmax int8 mass via largest-remainder. Final check tolerance = `5 × QUANT_SCALE`.  
-**Sources:** Spike grid logs under `chipyard/tmp_baseline_validation/phase1_spike/`; Verilator under `chipyard/tmp_baseline_validation/phase2_verilator/`. Companion tables also in [`sweeps/l_sweep/README.md`](sweeps/l_sweep/README.md).
+**Sources:** Spike HW-resadd validation under `chipyard/tmp_baseline_validation/hw_resadd_default_spike/` (and prior on/off compare under `hw_resadd_spike/`); Verilator under `chipyard/tmp_baseline_validation/phase2_verilator_hw_resadd/`. Companion tables also in [`sweeps/l_sweep/README.md`](sweeps/l_sweep/README.md).
+
+**Verilator is the sole authoritative source for cycle counts, stage share, and PE utilization.** Spike is used for correctness / regression only.
 
 ---
 
@@ -14,86 +16,70 @@ This baseline measures **current Gemmini hardware usage, unmodified** — not an
 | Stage | Where it runs today | Notes |
 | --- | --- | --- |
 | **QKV, Scores, Attn×V, Output proj, FFN** | **Real Gemmini hardware** via `tiled_matmul_auto` (WS) | Confirmed accelerator path — not a CPU matmul fallback. |
+| **Residual 1 / 2** | **Real Gemmini hardware** via `tiled_resadd_auto` (WS) | Default since `USE_HW_RESADD=1`. Same `QUANT_SCALE` int8 operands → identity scales; post-pass maps HW negative sat (−128) to scalar clip (−127) for bit-identical tensors. |
 | **Softmax** | **Scalar C on the host core** | Gemmini’s Normalizer / I-BERT path (`Activation` includes `SOFTMAX`) exists upstream but is **off** here (`has_normalizations=false`) and is documented upstream as experimental. Even if enabled, its integer Normalizer path does **not** match this project’s float + largest-remainder quantized softmax. **No hardware softmax is in use.** |
 | **RMSNorm** | **Scalar C on the host core** | Gemmini has **no RMSNorm hardware mode** — only LayerNorm (also disabled). There is no hardware RMSNorm to turn on. |
-| **Residual 1 / 2** | **Scalar C on the host core** | Gemmini has a working hardware residual-add path (`tiled_resadd_auto`) that this baseline **does not use**. No technical blocker is documented — a near-term optimization, not yet applied. |
 
-**Consequence (expected, not mysterious):** Softmax, RMSNorm, and Residual dominate total cycles because those three stages run on the host core rather than dedicated hardware. Upcoming project work — a hardware softmax unit, a hardware RMSNorm unit, and moving residual adds to `tiled_resadd_auto` — targets exactly these three now-quantified bottlenecks.
+**Consequence:** Softmax (host) still dominates RTL cycles at every L. Residual is no longer a host-scalar stage; RMSNorm remains the next host-scalar target after Softmax. GEMM’s share of total time stays small — the mesh is fast relative to Softmax, not idle.
 
-GEMM’s small share of total time means the mesh is fast relative to host Softmax/RMSNorm/Residual — not that Gemmini is idle or unused.
+**Out of scope for this baseline:** the archived pre-counters-inline L=256 Verilator log under [`sweeps/l_sweep/legacy_pre_counters/`](sweeps/l_sweep/legacy_pre_counters/) (different GEMM timing path; not comparable; not merged into any table below). **L=256 Verilator** was never completed under the counters-inline / HW-resadd builds and is **Spike-only**.
 
-**Out of scope for this baseline:** the archived pre-counters-inline L=256 Verilator log under [`sweeps/l_sweep/legacy_pre_counters/`](sweeps/l_sweep/legacy_pre_counters/) (different GEMM timing path; not comparable; not merged into any table below).
+**Not measured in these runs:** DMA / memory-stall cycle counters (no such fields appear in the Spike or Verilator test logs). Utilization below is only what `print_gemm_util_summary` records for GEMM stages (`exe_act`, `loop_act`, `ideal`, `exe_busy`, `mesh_util`). Residual-add does not emit a separate util row.
 
 ---
 
-## Spike results — full correctness + timing grid
+## 1. Spike validation (correctness / regression only)
 
 **Simulator:** Spike + Gemmini functional model.  
-**Grid:** 8 cases × 5 lengths × 5 seeds = **200 configs**.  
-**Result:** **200 / 200 PASS.**
+**Role:** Correctness and HW-vs-scalar residual regression — **not** performance. Spike `rdcycle` stage times and Spike PE util counters are **functional / not cycle-accurate**; they are **not** used as baseline performance numbers (Spike util rows in logs are omitted here entirely).
 
-Cases: `random` (float-gold, tolerance `5×QUANT_SCALE`) and edges `all_zeros`, `all_ones`, `all_max_mag`, `one_hot`, `checkerboard`, `all_negative`, `near_zero` (case-specific assertions).  
-`L ∈ {16, 32, 64, 128, 256}`, `PRNG_SEED ∈ {1…5}`, `D_MODEL=16`, `D_FF=64`.
+### HW-resadd random grid (current default)
 
-Spike cycle counts are useful for relative stage share and scaling, but are **not** RTL-accurate. Spike PE utilization counters are **not** cycle-accurate and are **omitted** from this baseline (do not read Spike `exe_act` / `mesh_util` as hardware utilization).
+**Grid:** random (`EDGE_CASE_ID=0`) × `L ∈ {16, 32, 64, 128, 256}` × `PRNG_SEED ∈ {1…5}` = **25 configs**.  
+**Build:** default `USE_HW_RESADD=1` (no flag override).  
+**Result:** **25 / 25 PASS.** Zero saturation banners. Gold check tolerance `5 × QUANT_SCALE`.
 
-### Correctness summary
+Prior A/B on the same 25 configs with explicit `-DUSE_HW_RESADD=0` vs `=1`: **25/25 PASS on both paths**, **0 disagreements** on Residual 1 / Residual 2 / Final RMSNorm int8 ranges (`max_abs` and printed `[lo,hi]` match every config after the `-128→-127` post-pass).
 
-| Case | PASS | Saturation banner (int8 range hit clip) | Notes |
-| --- | ---: | --- | --- |
-| random | 25/25 | **none** | Gold-tolerant; no sat on GEMM/softmax or Residual/RMSNorm software rails |
-| all_zeros | 25/25 | none | |
-| all_ones | 25/25 | 25/25 (intentional; Q/K and/or Residual 1) | Edge assertions PASS; sat fail skipped / clamp path for rail cases |
-| all_max_mag | 25/25 | 25/25 (intentional) | Same |
-| one_hot | 25/25 | 25/25 (scores / softmax / Residual 1; sometimes Final RMSNorm) | Expected collapse; assertions PASS |
-| checkerboard | 25/25 | 25/25 (Q/K and/or Residual 1) | Preclip bound enforced in-pipeline; PASS |
-| all_negative | 25/25 | **none** | See margin note below |
-| near_zero | 25/25 | none | |
-| **Total** | **200/200** | | |
+| L | seed | Result | Sat banner | Res1 max_abs | Res2 max_abs | Final RMSNorm max_abs | mean_maxp | mean_entropy |
+| ---: | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| 16 | 1 | PASS | none | 67 | 82 | 81 | 0.208 | 2.430 |
+| 16 | 2 | PASS | none | 65 | 84 | 84 | 0.224 | 2.432 |
+| 16 | 3 | PASS | none | 65 | 90 | 90 | 0.356 | 2.103 |
+| 16 | 4 | PASS | none | 63 | 88 | 87 | 0.241 | 2.343 |
+| 16 | 5 | PASS | none | 64 | 84 | 84 | 0.193 | 2.488 |
+| 32 | 1 | PASS | none | 66 | 83 | 84 | 0.129 | 3.133 |
+| 32 | 2 | PASS | none | 65 | 84 | 84 | 0.151 | 3.046 |
+| 32 | 3 | PASS | none | 65 | 91 | 90 | 0.193 | 2.902 |
+| 32 | 4 | PASS | none | 65 | 87 | 86 | 0.150 | 3.069 |
+| 32 | 5 | PASS | none | 64 | 87 | 86 | 0.136 | 3.111 |
+| 64 | 1 | PASS | none | 66 | 91 | 90 | 0.080 | 3.814 |
+| 64 | 2 | PASS | none | 65 | 91 | 90 | 0.099 | 3.736 |
+| 64 | 3 | PASS | none | 65 | 93 | 93 | 0.117 | 3.602 |
+| 64 | 4 | PASS | none | 65 | 93 | 94 | 0.109 | 3.673 |
+| 64 | 5 | PASS | none | 65 | 87 | 86 | 0.088 | 3.765 |
+| 128 | 1 | PASS | none | 65 | 95 | 95 | 0.051 | 4.492 |
+| 128 | 2 | PASS | none | 66 | 103 | 103 | 0.060 | 4.427 |
+| 128 | 3 | PASS | none | 65 | 109 | 109 | 0.070 | 4.306 |
+| 128 | 4 | PASS | none | 65 | 93 | 94 | 0.063 | 4.375 |
+| 128 | 5 | PASS | none | 65 | 92 | 92 | 0.058 | 4.408 |
+| 256 | 1 | PASS | none | 65 | 101 | 102 | 0.031 | 5.174 |
+| 256 | 2 | PASS | none | 66 | 103 | 103 | 0.035 | 5.112 |
+| 256 | 3 | PASS | none | 66 | 110 | 110 | 0.047 | 4.982 |
+| 256 | 4 | PASS | none | 65 | 112 | 111 | 0.041 | 5.039 |
+| 256 | 5 | PASS | none | 66 | 93 | 93 | 0.039 | 5.062 |
 
-**Historical all_negative / L=256 Residual-1 preclip margin:** Earlier audits reported Residual-1 preclip peaks above the ~115 band for some L=256 seeds. **Under this baseline grid that failure does not reproduce:** all five L=256 `all_negative` seeds **PASS**, with Residual-1 `max_abs` = 95 / 98 / 96 / 84 / 99 (all ≤ 115) and `preclip_fail=no`. Treat the old margin exceedance as a prior, data-dependent issue that is **not present** in these validated results — not as an open FAIL on this baseline.
+Softmax distribution (seed=1): entropy stays below `ln(L)`; `mean_maxp` stays above uniform `1/L` — not a flat “broken softmax” regime. Values match Verilator seed=1 at L=16/32/64/128 (same logits path).
 
-Clip conventions used in logs: hardware GEMM / softmax banners use true int8 rails (−128 / 127); software Residual 1/2, RMSNorm 1, Final RMSNorm use quantize clip ±127 (−127 / 127).
+**Spike-only sanity check (non-authoritative timing):** On the prior A/B logs for L=16 seed=1, Residual add 1 was **6568** Spike cycles with scalar residual (`USE_HW_RESADD=0`) vs **5198** with HW residual (`USE_HW_RESADD=1`). Treat this only as a functional-sim illustration that the HW path is exercised inside the stage timer — **not** as a performance result.
 
-### Random baseline — per-stage cycles (seed=1)
+**Earlier 200-config edge grid** (8 cases × 5 L × 5 seeds, scalar residual era) is historical correctness context under `phase1_spike/`; it was not re-run for this HW-resadd default promotion. Random HW-resadd tensors match scalar residual on the 25-config A/B above.
 
-Authoritative seed=1 stage breakdown (same seed as Verilator). Percents are of that row’s total.
+Clip conventions in logs: hardware GEMM / softmax banners use true int8 rails (−128 / 127); Residual 1/2 and RMSNorm use software clip ±127 after the residual post-pass (−127 / 127).
 
-| L | QKV | Scores | Softmax | Attn×V | Out proj | Res1 | RMSNorm1 | FFN | Res2 | RMSNorm2 | **Total** | Result |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| 16 | 1071 (1.2%) | 361 (0.4%) | 62192 (66.9%) | 360 (0.4%) | 359 (0.4%) | 6568 (7.1%) | 7402 (8.0%) | 718 (0.8%) | 6570 (7.1%) | 7403 (8.0%) | **93004** | PASS |
-| 32 | 1090 (0.3%) | 368 (0.1%) | 353258 (85.8%) | 366 (0.1%) | 365 (0.1%) | 13095 (3.2%) | 14713 (3.6%) | 730 (0.2%) | 13095 (3.2%) | 14712 (3.6%) | **411792** | PASS |
-| 64 | 1093 (0.05%) | 369 (0.02%) | 2208986 (95.1%) | 367 (0.02%) | 366 (0.02%) | 26146 (1.1%) | 29332 (1.3%) | 732 (0.03%) | 26151 (1.1%) | 29336 (1.3%) | **2322878** | PASS |
-| 128 | 1627 (0.01%) | 1003 (0.01%) | 13462849 (98.3%) | 544 (0.004%) | 543 (0.004%) | 54323 (0.4%) | 58599 (0.4%) | 1081 (0.01%) | 54331 (0.4%) | 58607 (0.4%) | **13693507** | PASS |
-| 256 | 2251 (0.002%) | 2213 (0.002%) | 90329500 (99.5%) | 752 (0.001%) | 751 (0.001%) | 104511 (0.1%) | 117106 (0.1%) | 1491 (0.002%) | 104519 (0.1%) | 117114 (0.1%) | **90780208** | PASS |
+### Logical traffic estimate (correctness-adjacent; same seed=1 logs)
 
-### Random baseline — total cycles across seeds 1–5
-
-All 25 random configs PASS. Softmax (and thus total) varies modestly with seed via attention sharpness.
-
-| L | seed1 | seed2 | seed3 | seed4 | seed5 | min | max | mean |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 16 | 93004 | 93879 | 93176 | 92769 | 94442 | 92769 | 94442 | 93454 |
-| 32 | 411792 | 403676 | 405046 | 407464 | 412737 | 403676 | 412737 | 408143 |
-| 64 | 2322878 | 2291205 | 2185647 | 2219797 | 2272303 | 2185647 | 2322878 | 2258366 |
-| 128 | 13693507 | 13218969 | 12569338 | 12787765 | 13107375 | 12569338 | 13693507 | 13075391 |
-| 256 | 90780208 | 87289845 | 81481936 | 84356552 | 85004673 | 81481936 | 90780208 | 85782643 |
-
-### Softmax distribution (random, seed=1)
-
-| L | mean_maxp | mean_entropy | ln(L) | uniform 1/L |
-| ---: | ---: | ---: | ---: | ---: |
-| 16 | 0.208 | 2.430 | 2.773 | 0.0625 |
-| 32 | 0.129 | 3.133 | 3.466 | 0.03125 |
-| 64 | 0.080 | 3.814 | 4.159 | 0.015625 |
-| 128 | 0.051 | 4.492 | 4.852 | 0.0078125 |
-| 256 | 0.031 | 5.174 | 5.545 | 0.00390625 |
-
-Entropy stays below ln(L); mean_maxp stays above uniform 1/L — not a flat “broken softmax” regime on this baseline.
-
-### Logical traffic estimate (random; same for Spike seed=1 and Verilator seed=1)
-
-Estimated operand/output bytes (not DMA counters):
+Estimated operand/output bytes printed by the test (not DMA counters). Verilator seed=1 matches Spike seed=1 at each L in `{16,32,64,128}`:
 
 | L | Total estimated bytes |
 | ---: | ---: |
@@ -101,107 +87,126 @@ Estimated operand/output bytes (not DMA counters):
 | 32 | 14848 |
 | 64 | 34816 |
 | 128 | 99328 |
-| 256 | 326656 |
+| 256 | 326656 (Spike seed=1 only; no Verilator L=256) |
 
 Scores + attention-weight traffic dominate growth (~L²).
 
 ---
 
-## Verilator results — cycle-accurate RTL (`GemminiRocketConfig`)
+## 2. Verilator baseline (authoritative performance — `GemminiRocketConfig`)
 
-**Config:** random, `PRNG_SEED=1`, `L ∈ {16, 32, 64, 128}`, `SKIP_GOLD=1` + Spike-exported `expected_final`.  
-**Result:** **4 / 4 PASS.** No saturation. No `+max-cycles` timeout.  
-**L=256:** not part of this baseline (incomplete counters-inline attempt purged; legacy archive not merged).
+**Config:** random, `PRNG_SEED=1`, `L ∈ {16, 32, 64, 128}`, default `USE_HW_RESADD=1`, `SKIP_GOLD=1` + Spike-exported `expected_final` from the same default build.  
+**Result:** **4 / 4 PASS.** No saturation banners. No `+max-cycles` timeout.  
+**L=256:** not run on Verilator (Spike-only); do not compare L=256 here.
 
-Utilization below is from Gemmini perf counters with **batched** summary (no printf inside timed GEMM windows). These numbers are meaningful on RTL.
+### Headline cycles + wall-clock (seed=1)
+
+| L | Result | Total cycles | Residual 1 | Residual 2 | Wall (s) | Wall (h) |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 16 | PASS | 163529 | 8387 | 8265 | 1112 | 0.31 |
+| 32 | PASS | 720706 | 16489 | 16297 | 2298 | 0.64 |
+| 64 | PASS | 4029349 | 32689 | 32391 | 7861 | 2.18 |
+| 128 | PASS | 21480688 | 73609 | 72927 | 28778 | 7.99 |
+
+Wall-clock is host Verilator sim time only — **not** DUT performance. Use cycle columns for architecture.
 
 ### Per-stage cycles (seed=1)
 
+Percents are of that row’s total.
+
 | L | QKV | Scores | Softmax | Attn×V | Out proj | Res1 | RMSNorm1 | FFN | Res2 | RMSNorm2 | **Total** | Result |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| 16 | 2541 (1.5%) | 747 (0.4%) | 109919 (65.0%) | 725 (0.4%) | 735 (0.4%) | 11147 (6.6%) | 15192 (9.0%) | 2072 (1.2%) | 11001 (6.5%) | 15043 (8.9%) | **169122** | PASS |
-| 32 | 2839 (0.4%) | 1109 (0.2%) | 619399 (84.7%) | 1045 (0.1%) | 832 (0.1%) | 21963 (3.0%) | 30084 (4.1%) | 2659 (0.4%) | 21813 (3.0%) | 29901 (4.1%) | **731644** | PASS |
-| 64 | 3646 (0.1%) | 2462 (0.1%) | 3831625 (94.6%) | 1889 (0.05%) | 1084 (0.03%) | 43893 (1.1%) | 59205 (1.5%) | 3902 (0.1%) | 43766 (1.1%) | 59007 (1.5%) | **4050479** | PASS |
-| 128 | 6010 (0.03%) | 8295 (0.04%) | 21067285 (98.0%) | 3751 (0.02%) | 1787 (0.01%) | 87505 (0.4%) | 118007 (0.5%) | 7789 (0.04%) | 86790 (0.4%) | 117943 (0.5%) | **21505162** | PASS |
+| 16 | 2565 (1.6%) | 746 (0.5%) | 109903 (**67.2%**) | 724 (0.4%) | 713 (0.4%) | 8387 (5.1%) | 15196 (9.3%) | 1990 (1.2%) | 8265 (5.1%) | 15040 (9.2%) | **163529** | PASS |
+| 32 | 2875 (0.4%) | 1075 (0.1%) | 619397 (**85.9%**) | 1061 (0.1%) | 818 (0.1%) | 16489 (2.3%) | 30068 (4.2%) | 2690 (0.4%) | 16297 (2.3%) | 29936 (4.2%) | **720706** | PASS |
+| 64 | 3700 (0.1%) | 2446 (0.1%) | 3831599 (**95.1%**) | 1920 (0.05%) | 1045 (0.03%) | 32689 (0.8%) | 59899 (1.5%) | 3937 (0.1%) | 32391 (0.8%) | 59723 (1.5%) | **4029349** | PASS |
+| 128 | 6156 (0.03%) | 8260 (0.04%) | 21070239 (**98.1%**) | 3807 (0.02%) | 1784 (0.01%) | 73609 (0.3%) | 118069 (0.6%) | 7888 (0.04%) | 72927 (0.3%) | 117949 (0.5%) | **21480688** | PASS |
 
-Softmax mean_maxp / mean_entropy match Spike seed=1 at each L (same logits path). Saturation: **none** on all four runs.
+Softmax mean_maxp / mean_entropy match Spike seed=1 at each L. Combined stage shares (seed=1):
 
-### GEMM utilization (Verilator only)
+| L | Softmax | RMSNorm 1+2 | Residual 1+2 | All GEMM (QKV+Scores+Attn×V+Out+FFN) |
+| ---: | ---: | ---: | ---: | ---: |
+| 16 | 67.2% | 18.5% | 10.2% | 4.1% |
+| 32 | 85.9% | 8.3% | 4.5% | 1.2% |
+| 64 | 95.1% | 3.0% | 1.6% | 0.3% |
+| 128 | 98.1% | 1.1% | 0.7% | 0.1% |
 
-| L | Stage | wall | exe_act | ideal | exe_busy | mesh_util |
-| ---: | --- | ---: | ---: | ---: | ---: | ---: |
-| 16 | QKV | 2541 | 90 | 48 | 3% | 53% |
-| 16 | Scores | 747 | 45 | 16 | 6% | 35% |
-| 16 | Attn×V | 725 | 30 | 16 | 4% | 53% |
-| 16 | Out | 735 | 30 | 16 | 4% | 53% |
-| 16 | FFN | 2072 | 198 | 128 | 9% | 64% |
-| 32 | QKV | 2839 | 158 | 96 | 5% | 60% |
-| 32 | Scores | 1109 | 105 | 64 | 9% | 60% |
-| 32 | Attn×V | 1045 | 104 | 64 | 9% | 61% |
-| 32 | Out | 832 | 48 | 32 | 5% | 66% |
-| 32 | FFN | 2659 | 383 | 256 | 14% | 66% |
-| 64 | QKV | 3646 | 340 | 192 | 9% | 56% |
-| 64 | Scores | 2462 | 361 | 256 | 14% | 70% |
-| 64 | Attn×V | 1889 | 341 | 256 | 18% | 75% |
-| 64 | Out | 1084 | 111 | 64 | 10% | 57% |
-| 64 | FFN | 3902 | 733 | 512 | 18% | 69% |
-| 128 | QKV | 6010 | 696 | 384 | 11% | 55% |
-| 128 | Scores | 8295 | 1350 | 1024 | 16% | 75% |
-| 128 | Attn×V | 3751 | 1951 | 1024 | 52% | 52% |
-| 128 | Out | 1787 | 234 | 128 | 13% | 54% |
-| 128 | FFN | 7789 | 1524 | 1024 | 19% | 67% |
+### vs prior scalar-residual Verilator baseline (same seed=1, L≤128)
 
-Mesh util is typically ~50–75% while execute-busy stays low — GEMM walls are short relative to Softmax, so utilization is about mesh efficiency during those short bursts, not about reclaiming Softmax’s share of the block.
+| L | Res1 Δ | Res2 Δ | Total Δ |
+| ---: | --- | --- | --- |
+| 16 | 11147 → 8387 (**−24.8%**) | 11001 → 8265 (**−24.9%**) | 169122 → 163529 (**−3.3%**) |
+| 32 | 21963 → 16489 (**−24.9%**) | 21813 → 16297 (**−25.3%**) | 731644 → 720706 (**−1.5%**) |
+| 64 | 43893 → 32689 (**−25.5%**) | 43766 → 32391 (**−26.0%**) | 4050479 → 4029349 (**−0.5%**) |
+| 128 | 87505 → 73609 (**−15.9%**) | 86790 → 72927 (**−16.0%**) | 21505162 → 21480688 (**−0.11%**) |
 
-### Wall-clock simulation time (operational only — **not** hardware performance)
+Residual 1/2 each drop ~25% at L=16–64 and ~16% at L=128. Totals move only a few percent (and &lt;0.2% at L=128) because Softmax still owns **67% → 98%** of the block — the stage breakdown above confirms that interpretation rather than complicating it. Relative residual speedup does **not** grow with L on this RTL sweep (largest %-reduction is at mid L; L=128 residual save is smaller in percent while Softmax’s absolute dominance is larger).
 
-| L | Wall-clock (s) | Wall-clock (h) | vs L=16 |
-| ---: | ---: | ---: | ---: |
-| 16 | 1213 | 0.34 | 1.0× |
-| 32 | 2477 | 0.69 | 2.0× |
-| 64 | 7403 | 2.06 | 6.1× |
-| 128 | 28295 | 7.86 | 23.3× |
+### GEMM utilization (Verilator only; seed=1)
 
-Host Verilator speed ≠ DUT cycle efficiency. Use cycle tables above for architecture; use this table only for planning sim budgets.
+From batched Gemmini perf counters (`EXE_ACTIVE_CYCLE`, `LOOP_MATMUL_ACTIVE_CYCLES`; no printf inside timed GEMM windows). Residual-add has **no** util row in these logs.
+
+| L | Stage | wall | exe_act | loop_act | ideal | exe_busy | mesh_util |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 16 | QKV | 2565 | 90 | 66 | 48 | 3% | 53% |
+| 16 | Scores | 746 | 45 | 22 | 16 | 6% | 35% |
+| 16 | Attn×V | 724 | 30 | 22 | 16 | 4% | 53% |
+| 16 | Out | 713 | 30 | 22 | 16 | 4% | 53% |
+| 16 | FFN | 1990 | 202 | 62 | 128 | 10% | 63% |
+| 32 | QKV | 2875 | 160 | 81 | 96 | 5% | 60% |
+| 32 | Scores | 1075 | 105 | 34 | 64 | 9% | 60% |
+| 32 | Attn×V | 1061 | 104 | 32 | 64 | 9% | 61% |
+| 32 | Out | 818 | 52 | 27 | 32 | 6% | 61% |
+| 32 | FFN | 2690 | 362 | 288 | 256 | 13% | 70% |
+| 64 | QKV | 3700 | 347 | 324 | 192 | 9% | 55% |
+| 64 | Scores | 2446 | 361 | 1372 | 256 | 14% | 70% |
+| 64 | Attn×V | 1920 | 341 | 1092 | 256 | 17% | 75% |
+| 64 | Out | 1045 | 111 | 105 | 64 | 10% | 57% |
+| 64 | FFN | 3937 | 740 | 2160 | 512 | 18% | 69% |
+| 128 | QKV | 6156 | 688 | 2871 | 384 | 11% | 55% |
+| 128 | Scores | 8260 | 1342 | 7379 | 1024 | 16% | 76% |
+| 128 | Attn×V | 3807 | 1955 | 2875 | 1024 | 51% | 52% |
+| 128 | Out | 1784 | 234 | 916 | 128 | 13% | 54% |
+| 128 | FFN | 7888 | 1539 | 5756 | 1024 | 19% | 66% |
+
+Mesh util is typically ~50–75% while execute-busy stays low — GEMM walls remain short relative to Softmax.
+
+### Seed=1 int8 ranges (Verilator; correctness cross-check)
+
+No saturation banners. Residual / Final max_abs stay inside the validated preclip band.
+
+| L | Res1 max_abs | Res2 max_abs | Final RMSNorm max_abs | Scores max_abs | Softmax wts max_abs |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 16 | 67 | 82 | 81 | 22 | 56 |
+| 32 | 66 | 83 | 84 | 24 | 39 |
+| 64 | 66 | 91 | 90 | 24 | 23 |
+| 128 | 65 | 95 | 95 | 26 | 21 |
 
 ---
 
 ## Findings (grounded in the numbers above)
 
-### 1. Softmax (host scalar) is the bottleneck at every L, and its share grows with L
+### 1. Softmax (host scalar) remains the bottleneck at every L
 
-On Verilator seed=1: Softmax is **65% → 85% → 95% → 98%** of total as L goes 16 → 32 → 64 → 128. Spike seed=1 matches the pattern through L=256 (**67% → 86% → 95% → 98% → 99.5%**).
+On Verilator seed=1 with HW residual: Softmax is **67.2% → 85.9% → 95.1% → 98.1%** of total as L goes 16 → 32 → 64 → 128. Enabling `tiled_resadd_auto` does not change that ranking.
 
-When L doubles, Softmax cycles grow by ~5.5–6.7× (not a clean 4×), and totals follow Softmax. That is the direct cost of L×L `expf` / largest-remainder work on the host — exactly the Softmax row in the conditions table.
+### 2. Hardware residual helps Residuals ~16–26%; totals barely move
 
-### 2. Residual + RMSNorm are the next host-scalar costs; they grow ~linearly with L
+Res1/Res2 each fall ~25% at L=16–64 and ~16% at L=128 vs the old scalar-residual Verilator table. Totals fall **3.3% → 1.5% → 0.5% → 0.11%** over the same L sweep — Softmax absorbs the win.
 
-At L=16 (Verilator), Res1+RMS1+Res2+RMS2 ≈ **31%** of total. By L=128 that combined host-norm/residual block is only ~1.8% because Softmax has absorbed almost everything — but absolute Residual/RMSNorm cycles still rise roughly with L (e.g. Res1 11 147 → 87 505 from L=16→128). They remain the obvious next targets after Softmax for hardware offload / `tiled_resadd_auto`.
+### 3. RMSNorm is now the clearest remaining host-scalar target after Softmax
 
-### 3. GEMM’s share is small and shrinks with L — hardware is fast, not missing
+At L=16, RMSNorm 1+2 is **18.5%** of RTL cycles (larger than Residual 1+2 at **10.2%**). By L=128 both are small versus Softmax, but RMSNorm is still the larger host-scalar block.
 
-Combined GEMM stages (QKV+Scores+Attn×V+Out+FFN):
+### 4. GEMM share stays small and shrinks with L
 
-| L | Spike seed=1 GEMM share | Verilator seed=1 GEMM share |
-| ---: | ---: | ---: |
-| 16 | 3.1% | **4.0%** |
-| 32 | 0.7% | 1.2% |
-| 64 | 0.1% | 0.3% |
-| 128 | ~0.03% | 0.1% |
-| 256 | ~0.008% | — |
+Combined GEMM: **4.1% → 1.2% → 0.3% → 0.1%** (Verilator seed=1). Mesh util ~50–75% on short bursts; not the end-to-end clock.
 
-The oft-quoted “~3–4%” applies near **L=16**. At larger L the GEMM share falls well below 1%. Absolute GEMM cycles still grow with L (more tiles), but Softmax grows much faster. This is Gemmini doing its matmuls quickly relative to host Softmax — underutilized as a **fraction of block time**, not unused.
+### 5. Correctness: HW residual matches scalar tensors on the random grid
 
-### 4. Correctness: clean grid; prior all_negative margin not present here
-
-200/200 Spike PASS; 4/4 Verilator PASS; random baseline has **zero** saturation banners. Edge-case saturation banners appear only on intentional rail / one-hot / checkerboard fills and still PASS under case assertions. The previously discussed all_negative L=256 Residual-1 preclip margin exceedance **does not appear** in this grid (all five seeds in-band and PASS).
-
-### 5. Verilator wall-clock (sim speed) grows slower than cycle count
-
-Cycles grow ~4.3× / 5.5× / 5.3× per L doubling; wall-clock grows ~2.0× / 6.1× / 23× from L=16→32→64→128 cumulative factors. Use wall times only for ops planning (~8 h for L=128; L=256 under this build still outstanding).
+25/25 Spike PASS under default HW residual; prior on/off compare showed identical Residual/Final int8 ranges on all 25 configs. Verilator 4/4 PASS with matching Softmax stats and no sat banners.
 
 ---
 
 ## Plain-language summary
 
-This baseline is **unmodified Gemmini usage**: real hardware for GEMMs only; Softmax, RMSNorm, and Residual on the host. That is why Softmax alone is already two-thirds of RTL cycles at L=16 and essentially the whole block by L=128–256. GEMM stays a few percent at small L and then vanishes as a share — the accelerator is working; the host scalar stages are the clock. Correctness is clean on the full Spike grid and on Verilator L=16–128 seed=1. The next engineering moves (hardware softmax, hardware RMSNorm, hardware residual-add) map one-to-one onto the three stages that own the cycle budget.
+This baseline is **unmodified Gemmini** for GEMMs **and** residual-add (`tiled_resadd_auto` default on); Softmax and RMSNorm still run on the host. Softmax alone is still about two-thirds of RTL cycles at L=16 and essentially the whole block by L=128 — so hardware residual cuts Residual stage time ~16–26% but moves end-to-end totals only a few percent. Use **Verilator** for any performance claim; use **Spike** (including L=256) for correctness only. Next leverage after Softmax is host RMSNorm (and eventually a real hardware softmax).
