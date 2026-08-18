@@ -49,6 +49,9 @@ seeds 1–5 × `L∈{16,32,64,128,256}`.
 build conditions (HW GEMM vs host Softmax/RMSNorm/Residual), full Spike 200-config
 grid, Verilator L=16–128 seed=1, and bottleneck analysis.
 
+**Hardware PWL Softmax** (`GemminiPWLSoftmaxConfig`): [`PWL_SOFTMAX.md`](PWL_SOFTMAX.md) —
+resolved RegInit / fence / DMA-tiling bugs and post-tiling-fix Spike+Verilator validation.
+
 Also: [`correctness/README.md`](correctness/README.md),
 [`sweeps/l_sweep/README.md`](sweeps/l_sweep/README.md).
 
