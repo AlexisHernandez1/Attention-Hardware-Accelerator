@@ -52,6 +52,10 @@ grid, Verilator L=16–128 seed=1, and bottleneck analysis.
 **Hardware PWL Softmax** (`GemminiPWLSoftmaxConfig`): [`PWL_SOFTMAX.md`](PWL_SOFTMAX.md) —
 resolved RegInit / fence / DMA-tiling bugs and post-tiling-fix Spike+Verilator validation.
 
+**Hardware I-BERT Softmax** (`GemminiIBertSoftmaxConfig`): [`IBERT_SOFTMAX.md`](IBERT_SOFTMAX.md) —
+stock Gemmini I-BERT Softmax/Normalizer path (`Normalizer.scala` + `AccumulatorScale` `iexp`)
+enabled via `has_normalizations`, with Spike 25/25 random + 100/100 edge-case validation.
+
 Also: [`correctness/README.md`](correctness/README.md),
 [`sweeps/l_sweep/README.md`](sweeps/l_sweep/README.md).
 

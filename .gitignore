@@ -14,3 +14,4 @@ correctness/archive/diagnostics/**/*.csv
 correctness/archive/diagnostics/**/*.json
 correctness/archive/diagnostics/**/*.log
 correctness/archive/diagnostics/**/summary.tsv
+correctness/binaries/
