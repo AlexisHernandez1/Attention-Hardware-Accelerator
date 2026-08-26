@@ -130,16 +130,7 @@ Softmax mean_maxp / mean_entropy match Spike seed=1 at each L. Combined stage sh
 | 64 | 95.1% | 3.0% | 1.6% | 0.3% |
 | 128 | 98.1% | 1.1% | 0.7% | 0.1% |
 
-### vs prior scalar-residual Verilator baseline (same seed=1, L≤128)
-
-| L | Res1 Δ | Res2 Δ | Total Δ |
-| ---: | --- | --- | --- |
-| 16 | 11147 → 8387 (**−24.8%**) | 11001 → 8265 (**−24.9%**) | 169122 → 163529 (**−3.3%**) |
-| 32 | 21963 → 16489 (**−24.9%**) | 21813 → 16297 (**−25.3%**) | 731644 → 720706 (**−1.5%**) |
-| 64 | 43893 → 32689 (**−25.5%**) | 43766 → 32391 (**−26.0%**) | 4050479 → 4029349 (**−0.5%**) |
-| 128 | 87505 → 73609 (**−15.9%**) | 86790 → 72927 (**−16.0%**) | 21505162 → 21480688 (**−0.11%**) |
-
-Residual 1/2 each drop ~25% at L=16–64 and ~16% at L=128. Totals move only a few percent (and &lt;0.2% at L=128) because Softmax still owns **67% → 98%** of the block — the stage breakdown above confirms that interpretation rather than complicating it. Relative residual speedup does **not** grow with L on this RTL sweep (largest %-reduction is at mid L; L=128 residual save is smaller in percent while Softmax’s absolute dominance is larger).
+For cross-build comparisons and analysis (including vs prior scalar-residual Verilator, Softmax HW paths, and narrative conclusions), see [`COMPARISON.md`](COMPARISON.md).
 
 ### GEMM utilization (Verilator only; seed=1)
 
@@ -180,33 +171,3 @@ No saturation banners. Residual / Final max_abs stay inside the validated precli
 | 32 | 66 | 83 | 84 | 24 | 39 |
 | 64 | 66 | 91 | 90 | 24 | 23 |
 | 128 | 65 | 95 | 95 | 26 | 21 |
-
----
-
-## Findings (grounded in the numbers above)
-
-### 1. Softmax (host scalar) remains the bottleneck at every L
-
-On Verilator seed=1 with HW residual: Softmax is **67.2% → 85.9% → 95.1% → 98.1%** of total as L goes 16 → 32 → 64 → 128. Enabling `tiled_resadd_auto` does not change that ranking.
-
-### 2. Hardware residual helps Residuals ~16–26%; totals barely move
-
-Res1/Res2 each fall ~25% at L=16–64 and ~16% at L=128 vs the old scalar-residual Verilator table. Totals fall **3.3% → 1.5% → 0.5% → 0.11%** over the same L sweep — Softmax absorbs the win.
-
-### 3. RMSNorm is now the clearest remaining host-scalar target after Softmax
-
-At L=16, RMSNorm 1+2 is **18.5%** of RTL cycles (larger than Residual 1+2 at **10.2%**). By L=128 both are small versus Softmax, but RMSNorm is still the larger host-scalar block.
-
-### 4. GEMM share stays small and shrinks with L
-
-Combined GEMM: **4.1% → 1.2% → 0.3% → 0.1%** (Verilator seed=1). Mesh util ~50–75% on short bursts; not the end-to-end clock.
-
-### 5. Correctness: HW residual matches scalar tensors on the random grid
-
-25/25 Spike PASS under default HW residual; prior on/off compare showed identical Residual/Final int8 ranges on all 25 configs. Verilator 4/4 PASS with matching Softmax stats and no sat banners.
-
----
-
-## Plain-language summary
-
-This baseline is **unmodified Gemmini** for GEMMs **and** residual-add (`tiled_resadd_auto` default on); Softmax and RMSNorm still run on the host. Softmax alone is still about two-thirds of RTL cycles at L=16 and essentially the whole block by L=128 — so hardware residual cuts Residual stage time ~16–26% but moves end-to-end totals only a few percent. Use **Verilator** for any performance claim; use **Spike** (including L=256) for correctness only. Next leverage after Softmax is host RMSNorm (and eventually a real hardware softmax).

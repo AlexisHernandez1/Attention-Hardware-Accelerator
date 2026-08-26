@@ -43,7 +43,7 @@ seeds 1–5 × `L∈{16,32,64,128,256}`.
 
 **Performance baseline (authoritative):** [`BASELINE.md`](BASELINE.md) —
 build conditions (HW GEMM vs host Softmax/RMSNorm/Residual), full Spike 200-config
-grid, Verilator L=16–128 seed=1, and bottleneck analysis.
+grid, Verilator L=16–128 seed=1 (raw measured results).
 
 **Hardware PWL Softmax** (`GemminiPWLSoftmaxConfig`): [`PWL_SOFTMAX.md`](PWL_SOFTMAX.md) —
 resolved RegInit / fence / DMA-tiling bugs and post-tiling-fix Spike+Verilator validation.
@@ -51,6 +51,10 @@ resolved RegInit / fence / DMA-tiling bugs and post-tiling-fix Spike+Verilator v
 **Hardware I-BERT Softmax** (`GemminiIBertSoftmaxConfig`): [`IBERT_SOFTMAX.md`](IBERT_SOFTMAX.md) —
 stock Gemmini I-BERT Softmax/Normalizer path (`Normalizer.scala` + `AccumulatorScale` `iexp`)
 enabled via `has_normalizations`, with Spike 25/25 random + 100/100 edge-case validation.
+
+**Cross-build comparison:** [`COMPARISON.md`](COMPARISON.md) —
+Softmax cycle / speedup / ulps side-by-sides, L=128 Residual anomaly, and narrative
+conclusions across scalar, PWL, and I-BERT builds.
 
 Also: [`correctness/README.md`](correctness/README.md),
 [`sweeps/l_sweep/README.md`](sweeps/l_sweep/README.md).
