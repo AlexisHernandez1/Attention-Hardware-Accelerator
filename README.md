@@ -63,7 +63,6 @@ Historical (legacy shared-PRNG / pre-calibration) simulator notes:
 
 - [Spike functional baseline](baseline-tests/spike/README.md)
 - [Verilator L=16 (legacy)](baseline-tests/verilator/README.md)
-- [Verilator L=32 (legacy)](baseline-tests/verilator-L32/README.md)
 - [Baseline-tests index](baseline-tests/README.md)
 - Pre-cal expected headers: [`correctness/expected/legacy_pre_cal/`](correctness/expected/legacy_pre_cal/)
 
