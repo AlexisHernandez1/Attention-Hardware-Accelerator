@@ -14,12 +14,8 @@ assertions are baked into the test. See
 [`correctness/WHAT_THIS_PROVES.md`](correctness/WHAT_THIS_PROVES.md).
 
 ## Approach
-
-- Softmax occurs on the host core (currently no dedicated softmax hardware unit)
-- Focus is on improving memory/data movement to keep the matmul phases fed
-- Simulation-only target (Spike / Verilator) — no FPGA prototyping, so
-  FireSim/FireMarshal are out of scope
-
+- Gemmini was originally built for CNN workloads and has no native RMSNorm hardware. It does ship an experimental, disabled-by-default I-BERT Softmax unit, which we enable and validate as one comparison point. The project's main contribution is a purpose-built PWL Softmax hardware unit, designed for higher accuracy than the existing I-BERT implementation, along with hardware-accelerated residual adds — extending Gemmini's transformer/attention support beyond its default CNN-oriented configuration. RMSNorm currently remains on the host core; a dedicated RMSNorm hardware unit is a planned future extension.
+- Simulation-only target (Spike / Verilator) — no FPGA prototyping, so FireSim/FireMarshal are out of scope
 ## Where the code lives
 
 This repo is the entry point and umbrella for the project — writeup,
