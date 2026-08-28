@@ -21,11 +21,23 @@ assertions are baked into the test. See
 This repo is the entry point and umbrella for the project — writeup,
 notes, and benchmarking scripts that don't belong inside Chipyard's
 directory structure. The actual hardware/software changes live in forks
-of the upstream projects, pinned to specific commits so the setup is
-reproducible:
+of the upstream projects, pinned to the `attention-accelerator` branch
+and chained together via submodules so the whole setup is reproducible
+from a single clone:
 
-- **Chipyard fork:** [AlexisHernandez1/chipyard](https://github.com/AlexisHernandez1/chipyard/tree/attention-accelerator)
-- **Gemmini fork:** [AlexisHernandez1/Gemmini](https://github.com/AlexisHernandez1/Gemmini/tree/attention-accelerator)
+- **Chipyard fork:** [AlexisHernandez1/chipyard](https://github.com/AlexisHernandez1/chipyard/tree/attention-accelerator) — top-level SoC framework
+- **Gemmini fork:** [AlexisHernandez1/Gemmini](https://github.com/AlexisHernandez1/Gemmini/tree/attention-accelerator) — submodule at `generators/gemmini`; the DNN accelerator generator itself, including the PWL/I-BERT Softmax and hardware-resadd changes
+- **gemmini-rocc-tests fork:** [AlexisHernandez1/gemmini-rocc-tests](https://github.com/AlexisHernandez1/gemmini-rocc-tests/tree/attention-accelerator) — submodule at `generators/gemmini/software/gemmini-rocc-tests`; bareMetalC test sources, including `transformer_block_test.c`
+- **libgemmini fork:** [AlexisHernandez1/libgemmini](https://github.com/AlexisHernandez1/libgemmini/tree/attention-accelerator) — submodule at `generators/gemmini/software/libgemmini`; the Spike extension with Gemmini instruction support (including the I-BERT Softmax plugin path used for the `GemminiIBertSoftmaxConfig` comparison)
+
+Clone the Chipyard fork with `--recurse-submodules` on the
+`attention-accelerator` branch to pull in all three of the above forks
+at their pinned commits in one step:
+
+```bash
+git clone --recurse-submodules -b attention-accelerator \
+  https://github.com/AlexisHernandez1/chipyard.git
+```
 
 ## Background
 
@@ -37,7 +49,14 @@ This project explores RISC-V hardware acceleration for attention, a key computat
 `ACC_SCALE_Q/K`, `SCORE_DEQUANT_SCALE=1/6`, `RMSNORM_GAIN=0.33974210`,
 seeds 1–5 × `L∈{16,32,64,128,256}`.
 
+**Setup:** every script under `correctness/scripts/` sources
+`$CHIPYARD/env.sh` and expects `$CHIPYARD` to point at your Chipyard
+checkout from the previous step. Export it before running anything —
+if left unset, the scripts fall back to a hardcoded path from the
+original development machine, which will not exist on yours:
+
 ```bash
+export CHIPYARD=/path/to/your/chipyard
 ./correctness/scripts/run_attention_baseline_grid.sh
 ```
 
@@ -69,13 +88,8 @@ Historical (legacy shared-PRNG / pre-calibration) simulator notes:
 ## Hardware/software changes
 
 Actual attention-kernel changes (RMSNorm gain calibration, Q/K quantization
-probes, softmax distribution validation) live in a fork of Chipyard, chained
-through its submodules:
-
-- **Chipyard fork**: https://github.com/AlexisHernandez1/Chipyard — branch `attention-accelerator`
-- **Gemmini fork**: https://github.com/AlexisHernandez1/Gemmini — branch `attention-accelerator`
-- **Gemmini-rocc-tests fork**: https://github.com/AlexisHernandez1/gemmini-rocc-tests — branch `attention-accelerator`
-
-Clone the Chipyard fork (with `--recurse-submodules`) on the `attention-accelerator`
-branch to reproduce the hardware-side results referenced in this repo's writeups
-and probe outputs under `correctness/`.
+probes, softmax distribution validation) live in the four forks listed under
+[Where the code lives](#where-the-code-lives) above. Reproduce them by
+cloning the Chipyard fork with `--recurse-submodules` on the
+`attention-accelerator` branch, as shown above, then running the baseline
+scripts under `correctness/` (see [Baseline Tests](#baseline-tests)).
