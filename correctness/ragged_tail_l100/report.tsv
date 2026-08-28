@@ -1,0 +1,6 @@
+L	seed	result	soft_mae	soft_max	soft_max_ulps	soft_mae_ulps	final_mae	final_max	final_max_over_tol	n_over_tol	n_int8_diff	max_int8_abs_diff	model_match
+100	1	PASS	0.000	0.000	0.000	0.000	0.004	0.014	0.364	0	0	0	MATCH
+100	2	PASS	0.000	0.000	0.000	0.000	0.004	0.015	0.396	0	0	0	MATCH
+100	3	PASS	0.000	0.000	0.000	0.000	0.004	0.014	0.369	0	0	0	MATCH
+100	4	PASS	0.000	0.000	0.000	0.000	0.004	0.015	0.380	0	0	0	MATCH
+100	5	PASS	0.000	0.000	0.000	0.000	0.004	0.016	0.403	0	0	0	MATCH

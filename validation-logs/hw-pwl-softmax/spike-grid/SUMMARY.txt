@@ -1,0 +1,7 @@
+LLM-PWL Spike validation (GemminiPWLSoftmaxLLMConfig)
+date: 2026-08-27T02:33:23-07:00
+CONFIG: GemminiPWLSoftmaxLLMConfig; Spike USE_HW_PWL_SOFTMAX=1 CHAR_SOFTMAX_ERR=1
+
+Random PASS: 25/25
+Edge PASS: 100/100
+TOTAL: 125/125
