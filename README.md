@@ -1,21 +1,20 @@
 # Attention Hardware Accelerator
 
-Exploring hardware acceleration for the attention mechanism (QKV projections,
-softmax, matmul) on top of Gemmini, UC Berkeley's systolic-array based
-DNN accelerator generator, within the Chipyard SoC framework.
+Hardware acceleration for transformer attention (QKV projections, softmax,
+matmul) built on top of [Gemmini](https://github.com/ucb-bar/gemmini), UC
+Berkeley's systolic-array DNN accelerator generator, within the
+[Chipyard](https://github.com/ucb-bar/chipyard) SoC framework. Gemmini was
+built for CNN workloads and ships no RMSNorm hardware and only an
+experimental, disabled-by-default I-BERT Softmax unit; this project adds a
+purpose-built **hardware PWL Softmax unit** (validated as more accurate than
+the existing I-BERT path) and **hardware-accelerated residual adds**, and
+separately enables/validates Gemmini's existing I-BERT Softmax as a
+comparison point. Everything is simulation-only (Spike functional / Verilator
+cycle-accurate) — no FPGA prototyping, so FireSim/FireMarshal are out of
+scope. See [`BASELINE.md`](BASELINE.md), [`PWL_SOFTMAX.md`](PWL_SOFTMAX.md),
+[`IBERT_SOFTMAX.md`](IBERT_SOFTMAX.md), and [`COMPARISON.md`](COMPARISON.md)
+for full results.
 
-## Status
-
-Early stage — single-head transformer decoder-block bareMetalC baseline on
-Gemmini (Spike / Verilator). Calibrated Q/K ACC scales, score dequant, and
-RMSNorm gain are the **official defaults**; residual/RMSNorm and softmax ΔH
-assertions are baked into the test. See
-[`correctness/README.md`](correctness/README.md) and
-[`correctness/WHAT_THIS_PROVES.md`](correctness/WHAT_THIS_PROVES.md).
-
-## Approach
-- Gemmini was originally built for CNN workloads and has no native RMSNorm hardware. It does ship an experimental, disabled-by-default I-BERT Softmax unit, which we enable and validate as one comparison point. The project's main contribution is a purpose-built PWL Softmax hardware unit, designed for higher accuracy than the existing I-BERT implementation, along with hardware-accelerated residual adds — extending Gemmini's transformer/attention support beyond its default CNN-oriented configuration. RMSNorm currently remains on the host core; a dedicated RMSNorm hardware unit is a planned future extension.
-- Simulation-only target (Spike / Verilator) — no FPGA prototyping, so FireSim/FireMarshal are out of scope
 ## Where the code lives
 
 This repo is the entry point and umbrella for the project — writeup,
@@ -30,53 +29,216 @@ from a single clone:
 - **gemmini-rocc-tests fork:** [AlexisHernandez1/gemmini-rocc-tests](https://github.com/AlexisHernandez1/gemmini-rocc-tests/tree/attention-accelerator) — submodule at `generators/gemmini/software/gemmini-rocc-tests`; bareMetalC test sources, including `transformer_block_test.c`
 - **libgemmini fork:** [AlexisHernandez1/libgemmini](https://github.com/AlexisHernandez1/libgemmini/tree/attention-accelerator) — submodule at `generators/gemmini/software/libgemmini`; the Spike extension with Gemmini instruction support (including the I-BERT Softmax plugin path used for the `GemminiIBertSoftmaxConfig` comparison)
 
-Clone the Chipyard fork with `--recurse-submodules` on the
-`attention-accelerator` branch to pull in all three of the above forks
-at their pinned commits in one step:
+```
+Attention-Hardware-Accelerator   (this repo — writeups, scripts, results)
+        ↓ references
+chipyard        (fork, branch: attention-accelerator)
+  └─ generators/gemmini              → Gemmini fork            (branch: attention-accelerator)
+       └─ software/gemmini-rocc-tests → gemmini-rocc-tests fork (branch: attention-accelerator)
+       └─ software/libgemmini         → libgemmini fork         (branch: attention-accelerator)
+```
+
+## Getting Started
+
+### 0. Prerequisites
+
+Chipyard's standard system dependencies (Java, Verilator, RISC-V toolchain
+deps, Conda, etc.) — install these first, per upstream Chipyard's docs:
+https://chipyard.readthedocs.io/en/latest/Chipyard-Basics/Initial-Repo-Setup.html#default-requirements-installation
+
+Disk/time budget: the full install + build is multi-hour; a Verilator run at
+L=128 alone takes several hours of wall time on the hardware used for this
+project's published numbers.
+
+### 1. Clone
 
 ```bash
 git clone --recurse-submodules -b attention-accelerator \
   https://github.com/AlexisHernandez1/chipyard.git
+cd chipyard
 ```
 
-## Background
+`--recurse-submodules` pulls `generators/gemmini` (pinned commit), which in
+turn pulls `software/gemmini-rocc-tests` and `software/libgemmini` (also
+pinned). If you cloned without it:
 
-This project explores RISC-V hardware acceleration for attention, a key computational bottleneck in transformer inference. Built on the open-source Gemmini/Chipyard framework and advised by Professor Tony Wu from the Zhejiang University SPAIL Lab.
+```bash
+git submodule update --init --recursive
+```
 
-## Baseline Tests
+Separately, clone this repo (writeups/scripts — not a submodule of chipyard):
+
+```bash
+cd ..
+git clone https://github.com/AlexisHernandez1/Attention-Hardware-Accelerator.git
+```
+
+### 2. Install Chipyard + Spike + Gemmini software
+
+From inside the `chipyard` clone:
+
+```bash
+./build-setup.sh
+source env.sh
+```
+
+This project targets **simulation only** (Spike + Verilator) — when
+`build-setup.sh` prompts for which toolchains/flows to install, you can skip
+FireSim/FireMarshal.
+
+Then install the Gemmini software runtime and build the test binaries:
+
+```bash
+cd generators/gemmini
+make -C software/libgemmini install
+
+cd software/gemmini-rocc-tests
+./build.sh
+```
+
+RISC-V binaries land in `build/` (bareMetal / linux / pk variants).
+
+### 3. Set the `CHIPYARD` environment variable
+
+Every script under `correctness/scripts/` and `sweeps/` in this repo expects
+a `CHIPYARD` env var pointing at your local chipyard clone. If unset, they
+fall back to a hardcoded path from the original development machine and will
+fail. Set this once per shell (add it to your shell profile if you'll be
+running these repeatedly):
+
+```bash
+export CHIPYARD=/absolute/path/to/your/chipyard
+```
+
+### 4. Build a Verilator simulator for a given config
+
+Three configs exist, one per hardware variant, defined in
+`chipyard/GemminiConfigs.scala` inside the Gemmini fork:
+
+| Config | What it builds |
+| --- | --- |
+| `GemminiRocketConfig` | Baseline — GEMM + HW residual-add (`tiled_resadd_auto`); Softmax and RMSNorm on host scalar C |
+| `GemminiPWLSoftmaxConfig` | Adds the project's custom hardware PWL Softmax unit |
+| `GemminiIBertSoftmaxConfig` | Enables Gemmini's existing (upstream, disabled-by-default) I-BERT Softmax hardware, as a comparison point |
+
+Build (from `chipyard/sims/verilator`), substituting the config you want:
+
+```bash
+cd $CHIPYARD/sims/verilator
+make CONFIG=GemminiRocketConfig
+# or: make CONFIG=GemminiPWLSoftmaxConfig
+# or: make CONFIG=GemminiIBertSoftmaxConfig
+```
+
+This elaborates the RTL and produces `simulator-chipyard-<Config>` in that
+directory — expect this to take a while.
+
+> **`make clean` is scoped per-config** (`CONFIG=X clean` only removes that
+> config's build). Don't run an unscoped clean across configs unless you
+> intend to wipe all of them.
+
+### 5. Run a single test binary under Verilator
+
+Baseline binaries (`transformer_block_test` and friends) come from
+`gemmini-rocc-tests/bareMetalC`, already built in step 2:
+
+```bash
+cd $CHIPYARD/sims/verilator
+make CONFIG=<Config> run-binary \
+  BINARY=$CHIPYARD/generators/gemmini/software/gemmini-rocc-tests/build/bareMetalC/transformer_block_test-baremetal
+```
+
+Relevant compile-time flags for `transformer_block_test.c` (set via the
+Makefile's `TRANSFORMER_CFLAGS`, then rebuild the binary before running it
+under Verilator):
+
+| Flag | Effect |
+| --- | --- |
+| `-DUSE_HW_RESADD=0` | Use scalar residual-add instead of the HW default (A/B comparison only) |
+| `-DUSE_HW_PWL_SOFTMAX=1 -DHAS_PWL_SOFTMAX` | Route Softmax through the hardware PWL unit (requires `GemminiPWLSoftmaxConfig`) |
+| `-DUSE_HW_SOFTMAX=1` | Route Softmax through Gemmini's I-BERT hardware (requires `GemminiIBertSoftmaxConfig`) |
+| `-DPRNG_SEED=<n>` | Seed for random input generation |
+| `-DEDGE_CASE_ID=<0..7>` | 0 = random baseline; 1–7 = named edge-case fills (zeros/ones/max-mag/one-hot/checkerboard/all-negative/near-zero) |
+| `-DUSE_EXPECTED` | Compare against a pre-exported snapshot instead of computing gold on-device (needed for Verilator) |
+
+Example, an L=32 PWL-softmax run:
+
+```bash
+cd $CHIPYARD/generators/gemmini/software/gemmini-rocc-tests
+make TRANSFORMER_CFLAGS="-DSEQ_LEN=32 -DUSE_HW_PWL_SOFTMAX=1 -DHAS_PWL_SOFTMAX -DPRNG_SEED=1 -DUSE_EXPECTED" \
+  bareMetalC/transformer_block_test-baremetal
+
+cd $CHIPYARD/sims/verilator
+make CONFIG=GemminiPWLSoftmaxConfig run-binary \
+  BINARY=$CHIPYARD/generators/gemmini/software/gemmini-rocc-tests/build/bareMetalC/transformer_block_test-baremetal
+```
+
+For Spike (fast functional correctness, not cycle-accurate — regression
+only, never performance numbers):
+
+```bash
+spike --extension=gemmini $CHIPYARD/generators/gemmini/software/gemmini-rocc-tests/build/bareMetalC/transformer_block_test-baremetal
+```
+
+### 6. Run the official correctness suite (Spike)
+
+From this repo, with `CHIPYARD` set (step 3):
+
+```bash
+./correctness/scripts/run_attention_baseline_grid.sh
+# subset of seeds:      ./correctness/scripts/run_attention_baseline_grid.sh 1 2
+# resume after a crash: ./correctness/scripts/run_attention_baseline_grid.sh --resume
+```
+
+Runs the full official grid: random baseline + all 7 edge cases, seeds 1–5 ×
+`L ∈ {16,32,64,128,256}`, `D_MODEL=16`, `D_FF=64`. Results in
+`correctness/logs/baseline_grid/summary.tsv`; PASS criteria are documented in
+[`correctness/README.md`](correctness/README.md).
+
+To (re-)export expected-value headers for Verilator (which has no on-device
+float gold):
+
+```bash
+./correctness/scripts/export_baseline_expected.sh
+# single point: ./correctness/scripts/spike_export_expected.sh 16 16 64 1
+```
+
+Then run under Verilator against a snapshot:
+
+```bash
+./correctness/scripts/verilator_run_expected.sh 16 16 64 1
+```
+
+### 7. Run the L-sweep (Verilator, performance)
+
+```bash
+./sweeps/l_sweep/run.sh
+# or, for a long unattended run:
+./sweeps/l_sweep/run_verilator_seed1_unattended.sh
+```
+
+Reproduces the seed=1, `L ∈ {16,32,64,128}` cycle-count sweep referenced in
+`BASELINE.md`, `PWL_SOFTMAX.md`, and `COMPARISON.md`. Budget real time — L=128
+alone took several hours on the original hardware. **L=256 has never
+completed under Verilator for any config** — Spike (functional,
+non-cycle-accurate) validates cleanly at L=256, but Verilator runs are only
+published through L=128.
+
+## Results
 
 **Official baseline:** single-head, `D_MODEL=16`, `D_FF=64`, calibrated
 `ACC_SCALE_Q/K`, `SCORE_DEQUANT_SCALE=1/6`, `RMSNORM_GAIN=0.33974210`,
-seeds 1–5 × `L∈{16,32,64,128,256}`.
+seeds 1–5 × `L∈{16,32,64,128,256}`. Read these in order if you're new to the
+project:
 
-**Setup:** every script under `correctness/scripts/` sources
-`$CHIPYARD/env.sh` and expects `$CHIPYARD` to point at your Chipyard
-checkout from the previous step. Export it before running anything —
-if left unset, the scripts fall back to a hardcoded path from the
-original development machine, which will not exist on yours:
+1. [`correctness/README.md`](correctness/README.md) + [`correctness/WHAT_THIS_PROVES.md`](correctness/WHAT_THIS_PROVES.md) — what "PASS" means and why
+2. [`BASELINE.md`](BASELINE.md) — authoritative performance baseline: build conditions (HW GEMM vs host Softmax/RMSNorm/Residual), full Spike 200-config grid, Verilator L=16–128 seed=1
+3. [`PWL_SOFTMAX.md`](PWL_SOFTMAX.md) — hardware PWL Softmax (`GemminiPWLSoftmaxConfig`): resolved RegInit / fence / DMA-tiling bugs and post-tiling-fix validation
+4. [`IBERT_SOFTMAX.md`](IBERT_SOFTMAX.md) — hardware I-BERT Softmax (`GemminiIBertSoftmaxConfig`): stock Gemmini Softmax/Normalizer path enabled via `has_normalizations`
+5. [`COMPARISON.md`](COMPARISON.md) — cross-build comparison: Softmax cycle/speedup/ulps side-by-sides, the L=128 Residual anomaly, and conclusions across scalar, PWL, and I-BERT builds
+6. [`SOFTMAX_ERROR_BASELINE.md`](SOFTMAX_ERROR_BASELINE.md) — numerical error characterization vs. float gold
 
-```bash
-export CHIPYARD=/path/to/your/chipyard
-./correctness/scripts/run_attention_baseline_grid.sh
-```
-
-**Performance baseline (authoritative):** [`BASELINE.md`](BASELINE.md) —
-build conditions (HW GEMM vs host Softmax/RMSNorm/Residual), full Spike 200-config
-grid, Verilator L=16–128 seed=1 (raw measured results).
-
-**Hardware PWL Softmax** (`GemminiPWLSoftmaxConfig`): [`PWL_SOFTMAX.md`](PWL_SOFTMAX.md) —
-resolved RegInit / fence / DMA-tiling bugs and post-tiling-fix Spike+Verilator validation.
-
-**Hardware I-BERT Softmax** (`GemminiIBertSoftmaxConfig`): [`IBERT_SOFTMAX.md`](IBERT_SOFTMAX.md) —
-stock Gemmini I-BERT Softmax/Normalizer path (`Normalizer.scala` + `AccumulatorScale` `iexp`)
-enabled via `has_normalizations`, with Spike 25/25 random + 100/100 edge-case validation.
-
-**Cross-build comparison:** [`COMPARISON.md`](COMPARISON.md) —
-Softmax cycle / speedup / ulps side-by-sides, L=128 Residual anomaly, and narrative
-conclusions across scalar, PWL, and I-BERT builds.
-
-Also: [`correctness/README.md`](correctness/README.md),
-[`sweeps/l_sweep/README.md`](sweeps/l_sweep/README.md).
+Also see [`sweeps/l_sweep/README.md`](sweeps/l_sweep/README.md).
 
 Historical (legacy shared-PRNG / pre-calibration) simulator notes:
 
@@ -85,11 +247,27 @@ Historical (legacy shared-PRNG / pre-calibration) simulator notes:
 - [Baseline-tests index](baseline-tests/README.md)
 - Pre-cal expected headers: [`correctness/expected/legacy_pre_cal/`](correctness/expected/legacy_pre_cal/)
 
-## Hardware/software changes
+## Making changes
 
-Actual attention-kernel changes (RMSNorm gain calibration, Q/K quantization
-probes, softmax distribution validation) live in the four forks listed under
-[Where the code lives](#where-the-code-lives) above. Reproduce them by
-cloning the Chipyard fork with `--recurse-submodules` on the
-`attention-accelerator` branch, as shown above, then running the baseline
-scripts under `correctness/` (see [Baseline Tests](#baseline-tests)).
+- **Test-harness code** (`transformer_block_test.c`, calibration constants,
+  PRNG seeding, sweep scripts) lives in `gemmini-rocc-tests`, `bareMetalC/`,
+  and is yours to change freely — this is where quantization scales,
+  magnitude constants, and workload shape live.
+- **Gemmini's own RTL** (`generators/gemmini/src/main/scala/gemmini/*.scala`)
+  and ISA/decode behavior should be treated as fixed except for two
+  categories of change already established as acceptable on this project:
+  (a) genuinely new hardware added as an opt-in, elaboration-gated config
+  (e.g. `has_pwl_softmax`, following the `has_normalizations` pattern), and
+  (b) integration wiring needed to plug a new unit into existing fence/busy
+  signals. Anything else changes Gemmini's intended/default behavior and
+  should be flagged explicitly before making it.
+- After any change to `Gemmini`, `gemmini-rocc-tests`, or `libgemmini`, bump
+  the pinning commit in the parent repo's submodule pointer (and push) so
+  this repo's pinned reference stays reproducible for others.
+
+## Background
+
+This project explores RISC-V hardware acceleration for attention, a key
+computational bottleneck in transformer inference. Built on the open-source
+Gemmini/Chipyard framework and advised by Professor Tony Wu from the
+Zhejiang University SPAIL Lab.
